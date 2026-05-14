@@ -4,8 +4,9 @@ export type CalendarDay = {
 	date: string;
 	day: number;
 	inMonth: boolean;
-	totalPoints: number;
+	exchangeableMinutes: number;
 	gameMinutes: number;
+	netMinutes: number;
 	balanceAfter: number | null;
 	hasRecord: boolean;
 };
@@ -33,8 +34,9 @@ export function buildCalendarDays(ledger: LedgerRow[], monthKey: string): Calend
 			date,
 			day: cursor.getDate(),
 			inMonth: date.startsWith(monthKey),
-			totalPoints: row?.score.totalPoints ?? 0,
+			exchangeableMinutes: row?.score.exchangeableMinutes ?? 0,
 			gameMinutes: row?.record.gameMinutes ?? 0,
+			netMinutes: row ? row.score.exchangeableMinutes - row.record.gameMinutes : 0,
 			balanceAfter: row?.balanceAfter ?? null,
 			hasRecord: Boolean(row)
 		});

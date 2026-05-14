@@ -7,12 +7,14 @@
 		Download,
 		FileSpreadsheet,
 		FileUp,
+		Gamepad2,
 		Gauge,
 		NotebookPen,
 		RefreshCw,
 		Save,
 		ShieldCheck,
-		Trash2
+		Trash2,
+		WalletCards
 	} from 'lucide-svelte';
 	import { deleteRemoteRecord, fetchRemoteRecords, saveRemoteRecord } from '$lib/study/api';
 	import { buildCalendarDays } from '$lib/study/calendar';
@@ -43,7 +45,9 @@
 	let persistStatus = $state<PersistStatus>('checking');
 	let isSaving = $state(false);
 	let isSyncing = $state(false);
+	let highlightedDate = $state('');
 	let fileInput: HTMLInputElement | undefined = $state();
+	let highlightTimer: ReturnType<typeof setTimeout> | undefined;
 
 	let cleanedDraft = $derived(normalizeDraft(draft));
 	let previewScore = $derived(scoreRecord(cleanedDraft));
@@ -63,6 +67,7 @@
 	let suggestedTarget = $derived(getSuggestedTargetLevel(cleanedDraft));
 	let pendingCount = $derived(records.filter((record) => record.syncState === 'pending').length);
 	let meterRotation = $derived(Math.min(220, Math.max(0, previewScore.totalPoints)) - 110);
+	let previewNetMinutes = $derived(previewScore.exchangeableMinutes - cleanedDraft.gameMinutes);
 
 	onMount(async () => {
 		passcode = localStorage.getItem('hakuba-passcode') ?? '';
@@ -114,12 +119,25 @@
 			} else {
 				statusText = '已保存到本地';
 			}
+			highlightSavedDate(localRecord.date);
 		} catch (error) {
 			errorText = error instanceof Error ? error.message : '保存失败';
 			statusText = '本地有待同步记录';
 		} finally {
 			isSaving = false;
 		}
+	}
+
+	function highlightSavedDate(date: string) {
+		highlightedDate = '';
+		if (highlightTimer) clearTimeout(highlightTimer);
+
+		requestAnimationFrame(() => {
+			highlightedDate = date;
+			highlightTimer = setTimeout(() => {
+				highlightedDate = '';
+			}, 1100);
+		});
 	}
 
 	async function syncRecords() {
@@ -308,47 +326,49 @@
 						/>
 					</label>
 
-					<div class="grid grid-cols-2 gap-3">
-						<label class="grid gap-1 text-sm font-semibold">
-							高数分钟
-							<input
-								class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-								type="number"
-								min="0"
-								bind:value={draft.calculusMinutes}
-							/>
-						</label>
-						<label class="grid gap-1 text-sm font-semibold">
-							专业分钟
-							<input
-								class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-								type="number"
-								min="0"
-								bind:value={draft.courseMinutes}
-							/>
-						</label>
-					</div>
+					<section
+						class="rounded-[8px] bg-[oklch(0.965_0.018_92/0.76)] p-3 shadow-[inset_0_0_0_1px_oklch(0.74_0.035_74/0.34)]"
+					>
+						<p
+							class="mb-3 flex items-center gap-2 text-sm font-semibold text-[oklch(0.37_0.08_145)]"
+						>
+							<WalletCards size={17} />
+							学习收入
+						</p>
 
-					<div class="grid grid-cols-2 gap-3">
-						<label class="grid gap-1 text-sm font-semibold">
-							单词数
-							<input
-								class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-								type="number"
-								min="0"
-								bind:value={draft.wordCount}
-							/>
-						</label>
-						<label class="grid gap-1 text-sm font-semibold">
-							游戏分钟
-							<input
-								class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-								type="number"
-								min="0"
-								bind:value={draft.gameMinutes}
-							/>
-						</label>
-					</div>
+						<div class="grid gap-3">
+							<div class="grid grid-cols-2 gap-3">
+								<label class="grid gap-1 text-sm font-semibold">
+									高数分钟
+									<input
+										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
+										type="number"
+										min="0"
+										bind:value={draft.calculusMinutes}
+									/>
+								</label>
+								<label class="grid gap-1 text-sm font-semibold">
+									专业分钟
+									<input
+										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
+										type="number"
+										min="0"
+										bind:value={draft.courseMinutes}
+									/>
+								</label>
+							</div>
+
+							<label class="grid gap-1 text-sm font-semibold">
+								单词数
+								<input
+									class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
+									type="number"
+									min="0"
+									bind:value={draft.wordCount}
+								/>
+							</label>
+						</div>
+					</section>
 
 					<div class="grid gap-2">
 						<div class="flex items-center justify-between">
@@ -401,6 +421,29 @@
 							/>
 						</label>
 					</div>
+
+					<section
+						class="rounded-[8px] bg-[oklch(0.96_0.026_42/0.58)] p-3 shadow-[inset_0_0_0_1px_oklch(0.74_0.07_42/0.3)]"
+					>
+						<div class="mb-3 flex items-center justify-between gap-3">
+							<p class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.4_0.09_42)]">
+								<Gamepad2 size={17} />
+								游戏支出
+							</p>
+							<span class="ink-numbers text-xs font-semibold text-[oklch(0.42_0.08_42)]">
+								净变化 {previewNetMinutes >= 0 ? '+' : ''}{previewNetMinutes}分
+							</span>
+						</div>
+						<label class="grid gap-1 text-sm font-semibold">
+							实际游戏
+							<input
+								class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.06_42/0.48)] focus:shadow-[inset_0_0_0_2px_oklch(0.54_0.12_42)] focus:outline-none"
+								type="number"
+								min="0"
+								bind:value={draft.gameMinutes}
+							/>
+						</label>
+					</section>
 
 					<label class="grid gap-1 text-sm font-semibold">
 						备注
@@ -484,6 +527,25 @@
 											{previewScore.exchangeableMinutes}分
 										</p>
 									</div>
+									<div class="rounded-[6px] bg-[oklch(0.985_0.018_45/0.76)] p-3">
+										<p class="text-xs text-[oklch(0.48_0.055_42)]">实际游戏</p>
+										<p class="ink-numbers mt-1 text-xl font-semibold text-[oklch(0.42_0.1_42)]">
+											-{cleanedDraft.gameMinutes}分
+										</p>
+									</div>
+									<div class="rounded-[6px] bg-[oklch(0.99_0.006_92/0.76)] p-3">
+										<p class="text-xs text-[oklch(0.48_0.028_75)]">净变化</p>
+										<p
+											class={[
+												'ink-numbers mt-1 text-xl font-semibold',
+												previewNetMinutes < 0
+													? 'text-[oklch(0.42_0.1_42)]'
+													: 'text-[oklch(0.36_0.1_145)]'
+											]}
+										>
+											{previewNetMinutes >= 0 ? '+' : ''}{previewNetMinutes}分
+										</p>
+									</div>
 									<div class="rounded-[6px] bg-[oklch(0.99_0.006_92/0.76)] p-3">
 										<p class="text-xs text-[oklch(0.48_0.028_75)]">结转</p>
 										<p class="ink-numbers mt-1 text-xl font-semibold">{currentBalance}</p>
@@ -537,9 +599,11 @@
 											day.inMonth
 												? 'bg-[oklch(0.99_0.006_92/0.78)]'
 												: 'bg-[oklch(0.93_0.012_88/0.45)] text-[oklch(0.58_0.02_75)]',
+											day.netMinutes < 0 ? 'shadow-[inset_0_0_0_1px_oklch(0.58_0.12_42/0.62)]' : '',
 											day.date === cleanedDraft.date
 												? 'shadow-[inset_0_0_0_2px_oklch(0.45_0.11_145)]'
-												: ''
+												: '',
+											day.date === highlightedDate ? 'saved-day-pulse' : ''
 										]}
 										type="button"
 										onclick={() => selectDate(day.date)}
@@ -547,10 +611,19 @@
 										<span class="ink-numbers text-sm font-semibold">{day.day}</span>
 										{#if day.hasRecord}
 											<span class="mt-2 block h-1.5 rounded-full bg-[oklch(0.42_0.11_145)]"></span>
-											<span
-												class="ink-numbers mt-1 block text-[10px] font-semibold text-[oklch(0.38_0.07_145)]"
-											>
-												+{day.totalPoints}
+											<span class="mt-1 grid gap-0.5">
+												<span
+													class="ink-numbers block text-[10px] font-semibold text-[oklch(0.38_0.07_145)]"
+												>
+													+{day.exchangeableMinutes}
+												</span>
+												{#if day.gameMinutes > 0}
+													<span
+														class="ink-numbers block text-[10px] font-semibold text-[oklch(0.43_0.1_42)]"
+													>
+														-{day.gameMinutes}
+													</span>
+												{/if}
 											</span>
 										{/if}
 									</button>
@@ -647,13 +720,19 @@
 					>
 						<div class="flex items-start justify-between gap-3">
 							<p class="ink-numbers font-semibold">{record.date}</p>
-							<p class="ink-numbers text-lg font-semibold">+{row?.score.totalPoints ?? 0}</p>
+							<p class="ink-numbers text-lg font-semibold">
+								+{row?.score.exchangeableMinutes ?? 0}
+							</p>
 						</div>
 						<div class="mt-2 grid grid-cols-3 gap-2 text-xs text-[oklch(0.46_0.028_75)]">
 							<span>学习 {record.calculusMinutes + record.courseMinutes}</span>
-							<span>单词 {record.wordCount}</span>
+							<span class="text-[oklch(0.43_0.1_42)]">游戏 -{record.gameMinutes}</span>
 							<span>结转 {row?.balanceAfter ?? 0}</span>
 						</div>
+						<p class="ink-numbers mt-1 text-xs font-semibold text-[oklch(0.36_0.1_145)]">
+							净变化 {(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes >= 0 ? '+' : ''}
+							{(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes}分
+						</p>
 						{#if record.note}
 							<p class="mt-2 line-clamp-2 text-sm text-[oklch(0.38_0.028_75)]">{record.note}</p>
 						{/if}
@@ -673,8 +752,9 @@
 							<th class="py-2 pr-4">日期</th>
 							<th class="py-2 pr-4 text-right">学习</th>
 							<th class="py-2 pr-4 text-right">单词</th>
-							<th class="py-2 pr-4 text-right">积分</th>
-							<th class="py-2 pr-4 text-right">游戏</th>
+							<th class="py-2 pr-4 text-right">可兑换</th>
+							<th class="py-2 pr-4 text-right">实际游戏</th>
+							<th class="py-2 pr-4 text-right">净变化</th>
 							<th class="py-2 pr-4 text-right">结转</th>
 							<th class="py-2">备注</th>
 						</tr>
@@ -689,9 +769,22 @@
 								</td>
 								<td class="ink-numbers py-3 pr-4 text-right">{record.wordCount}</td>
 								<td class="ink-numbers py-3 pr-4 text-right font-semibold">
-									{row?.score.totalPoints ?? 0}
+									+{row?.score.exchangeableMinutes ?? 0}
 								</td>
-								<td class="ink-numbers py-3 pr-4 text-right">{record.gameMinutes}</td>
+								<td class="ink-numbers py-3 pr-4 text-right text-[oklch(0.43_0.1_42)]">
+									-{record.gameMinutes}
+								</td>
+								<td
+									class={[
+										'ink-numbers py-3 pr-4 text-right font-semibold',
+										(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes < 0
+											? 'text-[oklch(0.43_0.1_42)]'
+											: 'text-[oklch(0.36_0.1_145)]'
+									]}
+								>
+									{(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes >= 0 ? '+' : ''}
+									{(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes}
+								</td>
 								<td class="ink-numbers py-3 pr-4 text-right">{row?.balanceAfter ?? 0}</td>
 								<td class="max-w-[280px] truncate py-3 text-[oklch(0.42_0.028_75)]"
 									>{record.note}</td
@@ -700,7 +793,7 @@
 						{/each}
 						{#if recentRows.length === 0}
 							<tr>
-								<td class="py-8 text-center text-[oklch(0.48_0.028_75)]" colspan="7">还没有记录</td>
+								<td class="py-8 text-center text-[oklch(0.48_0.028_75)]" colspan="8">还没有记录</td>
 							</tr>
 						{/if}
 					</tbody>
