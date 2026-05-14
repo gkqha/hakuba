@@ -59,7 +59,9 @@ Deploy command:
 bun run deploy
 ```
 
-Do not set the deploy command to `npx wrangler deploy`. That command starts Wrangler's Workers auto-configuration flow, which rewrites the build step in CI and expects a generated `worker-configuration.d.ts` file. This project builds Pages output, so the deploy step must use `wrangler pages deploy .svelte-kit/cloudflare --project-name hakuba`.
+Set `CLOUDFLARE_PAGES_PROJECT_NAME` to the exact Pages project name from Cloudflare. The deploy script uses branch `main` by default so it reads the Production variables shown in Cloudflare. If the Pages production branch is different, set `CLOUDFLARE_PAGES_BRANCH` to that branch name.
+
+Do not set the deploy command to `npx wrangler deploy`. That command starts Wrangler's Workers auto-configuration flow, which rewrites the build step in CI and expects a generated `worker-configuration.d.ts` file. This project builds Pages output, so the deploy step must use `wrangler pages deploy .svelte-kit/cloudflare --project-name <pages-project-name> --branch <production-branch>`.
 
 The `CLOUDFLARE_API_TOKEN` used by this command must include account-level Cloudflare Pages edit/write permission. A token that only has Workers permissions can log in but will fail on `/pages/projects/hakuba` with `Authentication error [code: 10000]`.
 
