@@ -65,6 +65,12 @@ Do not set the deploy command to `npx wrangler deploy`. That command starts Wran
 
 The `CLOUDFLARE_API_TOKEN` used by this command must include account-level Cloudflare Pages edit/write permission. A token that only has Workers permissions can log in but will fail on `/pages/projects/hakuba` with `Authentication error [code: 10000]`.
 
+Runtime configuration is managed by `wrangler.toml`. Keep `DB` there. Set `APP_PASSCODE` as an encrypted Pages secret, not a plain text variable:
+
+```sh
+wrangler pages secret put APP_PASSCODE --project-name hakuba
+```
+
 环境变量和绑定：
 
 - `APP_PASSCODE`: 私人口令，作为单人使用的轻量保护。
