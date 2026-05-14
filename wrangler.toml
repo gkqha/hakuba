@@ -2,9 +2,6 @@ name = "hakuba"
 compatibility_date = "2026-05-14"
 pages_build_output_dir = ".svelte-kit/cloudflare"
 
-[secrets]
-required = ["APP_PASSCODE"]
-
 [[d1_databases]]
 binding = "DB"
 database_name = "hakuba"

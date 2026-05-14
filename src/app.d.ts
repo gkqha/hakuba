@@ -9,7 +9,6 @@ declare global {
 		interface Platform {
 			env: {
 				DB?: D1Database;
-				APP_PASSCODE?: string;
 			};
 			context: ExecutionContext;
 			caches: CacheStorage & { default: Cache };
