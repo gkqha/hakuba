@@ -1,7 +1,6 @@
 node_modules
 ref.xls
 ref.xls.txt
-wrangler.jsonc
 
 # Output
 .output
