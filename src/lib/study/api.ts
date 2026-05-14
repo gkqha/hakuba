@@ -1,4 +1,4 @@
-import type { StudyRecord } from './types';
+import type { StudyRecord, WeeklyRecord } from './types';
 
 const passcodeHeader = 'x-hakuba-passcode';
 
@@ -37,4 +37,25 @@ export async function deleteRemoteRecord(passcode: string, date: string) {
 		headers: { [passcodeHeader]: passcode }
 	});
 	await parseResponse<{ ok: true }>(response);
+}
+
+export async function fetchRemoteWeeklyRecords(passcode: string) {
+	const response = await fetch('/api/weeks', {
+		headers: { [passcodeHeader]: passcode }
+	});
+	const body = await parseResponse<{ weeklyRecords: WeeklyRecord[] }>(response);
+	return body.weeklyRecords;
+}
+
+export async function saveRemoteWeeklyRecord(passcode: string, record: WeeklyRecord) {
+	const response = await fetch('/api/weeks', {
+		method: 'POST',
+		headers: {
+			'content-type': 'application/json',
+			[passcodeHeader]: passcode
+		},
+		body: JSON.stringify(record)
+	});
+	const body = await parseResponse<{ weeklyRecord: WeeklyRecord }>(response);
+	return body.weeklyRecord;
 }

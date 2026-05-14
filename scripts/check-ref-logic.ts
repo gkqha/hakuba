@@ -67,10 +67,10 @@ const records: StudyRecord[] = [
 ];
 
 const expected = new Map([
-	['2026-05-14', { totalPoints: 95, exchangeableMinutes: 95, balanceAfter: 35 }],
-	['2026-05-15', { totalPoints: 45, exchangeableMinutes: 45, balanceAfter: 0 }],
-	['2026-05-16', { totalPoints: 85, exchangeableMinutes: 85, balanceAfter: -35 }],
-	['2026-05-17', { totalPoints: 210, exchangeableMinutes: 210, balanceAfter: -5 }]
+	['2026-05-14', { totalPoints: 85, exchangeableMinutes: 85, balanceAfter: 25 }],
+	['2026-05-15', { totalPoints: 45, exchangeableMinutes: 45, balanceAfter: -10 }],
+	['2026-05-16', { totalPoints: 85, exchangeableMinutes: 85, balanceAfter: -45 }],
+	['2026-05-17', { totalPoints: 210, exchangeableMinutes: 210, balanceAfter: -15 }]
 ]);
 
 for (const record of records) {

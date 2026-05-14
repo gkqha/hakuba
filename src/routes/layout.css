@@ -60,6 +60,102 @@
 		font-variant-numeric: tabular-nums;
 	}
 
+	.adventure-board {
+		position: relative;
+		overflow: hidden;
+		background:
+			linear-gradient(90deg, oklch(0.78 0.04 72 / 0.16) 1px, transparent 1px) 20px 0 / 28px 100%,
+			linear-gradient(oklch(0.76 0.03 74 / 0.18) 1px, transparent 1px) 0 18px / 100% 28px,
+			oklch(0.97 0.022 92);
+		box-shadow:
+			inset 0 0 0 1px oklch(0.73 0.04 76 / 0.42),
+			0 14px 34px oklch(0.3 0.03 65 / 0.1);
+	}
+
+	.adventure-board::after {
+		content: '';
+		position: absolute;
+		inset: auto -24px -42px auto;
+		width: 140px;
+		height: 140px;
+		border: 12px solid oklch(0.63 0.15 145 / 0.16);
+		border-radius: 999px;
+		transform: rotate(-12deg);
+	}
+
+	.adventure-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		border-radius: 999px;
+		padding: 0.38rem 0.62rem;
+		background: oklch(0.97 0.018 92 / 0.88);
+		box-shadow:
+			inset 0 0 0 1px oklch(0.74 0.04 75 / 0.48),
+			0 1px 0 oklch(0.99 0.006 95 / 0.8);
+	}
+
+	.adventure-chip-green {
+		color: oklch(0.33 0.12 146);
+		background: oklch(0.91 0.06 145 / 0.82);
+	}
+
+	.adventure-chip-gold {
+		color: oklch(0.38 0.1 72);
+		background: oklch(0.94 0.075 82 / 0.82);
+	}
+
+	.adventure-chip-red {
+		color: oklch(0.42 0.12 38);
+		background: oklch(0.94 0.055 40 / 0.82);
+	}
+
+	.adventure-xp-fill {
+		background:
+			linear-gradient(90deg, oklch(0.99 0.02 95 / 0.3) 0 5px, transparent 5px 14px),
+			linear-gradient(90deg, oklch(0.58 0.18 146), oklch(0.78 0.16 90));
+		box-shadow:
+			inset 0 1px 0 oklch(0.99 0.015 95 / 0.7),
+			0 0 18px oklch(0.62 0.16 138 / 0.28);
+		transition: width 320ms cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.adventure-stamp,
+	.adventure-mini-stamp {
+		display: grid;
+		gap: 0.1rem;
+		border: 1px solid oklch(0.42 0.11 145 / 0.46);
+		border-radius: 7px;
+		background: oklch(0.95 0.045 145 / 0.7);
+		color: oklch(0.31 0.1 145);
+		padding: 0.55rem 0.7rem;
+		transform: rotate(-1.2deg);
+		box-shadow: 0 2px 0 oklch(0.36 0.1 145 / 0.16);
+	}
+
+	.adventure-stamp span,
+	.adventure-mini-stamp {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.28rem;
+		font-size: 0.68rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+
+	.adventure-stamp strong {
+		font-size: 1rem;
+		line-height: 1.1;
+	}
+
+	.adventure-stamp-gold,
+	.adventure-mini-stamp-gold {
+		border-color: oklch(0.52 0.12 78 / 0.48);
+		background: oklch(0.96 0.065 84 / 0.72);
+		color: oklch(0.36 0.09 72);
+		transform: rotate(1.2deg);
+	}
+
 	.points-meter {
 		background:
 			radial-gradient(circle at 50% 52%, oklch(0.99 0.006 95) 0 42%, transparent 43%),
@@ -74,6 +170,170 @@
 
 	.saved-day-pulse {
 		animation: saved-day-pulse 900ms cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.quest-progress {
+		position: relative;
+		background:
+			linear-gradient(90deg, oklch(0.78 0.04 72 / 0.2) 1px, transparent 1px) 0 0 / 16px 100%,
+			oklch(0.97 0.024 88 / 0.72);
+		box-shadow:
+			inset 0 0 0 1px oklch(0.72 0.05 74 / 0.34),
+			0 2px 4px oklch(0.35 0.04 74 / 0.08);
+	}
+
+	.quest-progress-fill {
+		background:
+			linear-gradient(90deg, oklch(0.98 0.02 92 / 0.32) 0 3px, transparent 3px 10px),
+			linear-gradient(90deg, oklch(0.55 0.17 146), oklch(0.74 0.15 88));
+		box-shadow:
+			inset 0 1px 0 oklch(0.99 0.01 94 / 0.55),
+			0 0 12px oklch(0.62 0.13 130 / 0.26);
+		transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.adventure-badge {
+		display: grid;
+		justify-items: end;
+		line-height: 1.1;
+		border-radius: 8px;
+		background: oklch(0.99 0.01 92 / 0.72);
+		padding: 0.4rem 0.55rem;
+		box-shadow: inset 0 0 0 1px oklch(0.7 0.045 74 / 0.42);
+	}
+
+	.adventure-badge span {
+		font-size: 0.65rem;
+		font-weight: 700;
+		color: oklch(0.42 0.1 42);
+	}
+
+	.adventure-badge strong {
+		font-size: 1rem;
+		color: oklch(0.31 0.08 145);
+	}
+
+	.adventure-clear-stamp {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		border: 2px solid oklch(0.37 0.12 145 / 0.76);
+		border-radius: 8px;
+		color: oklch(0.33 0.1 145);
+		font-size: 0.72rem;
+		font-weight: 900;
+		letter-spacing: 0.14em;
+		padding: 0.12rem 0.45rem;
+		transform: translate(-50%, -50%) rotate(-7deg);
+		background: oklch(0.97 0.035 145 / 0.74);
+	}
+
+	.quest-subgoal {
+		border-radius: 999px;
+		background: oklch(0.99 0.006 92 / 0.55);
+		padding: 0.2rem 0.45rem;
+	}
+
+	.meter-pop {
+		filter: drop-shadow(0 10px 14px oklch(0.31 0.035 72 / 0.12));
+	}
+
+	.adventure-mini-stamp {
+		display: inline-flex;
+		justify-content: center;
+		align-items: center;
+		min-height: 1.9rem;
+		padding: 0.35rem 0.5rem;
+		text-align: center;
+	}
+
+	.adventure-stat {
+		position: relative;
+		overflow: hidden;
+		background: linear-gradient(135deg, oklch(0.99 0.012 95 / 0.92), oklch(0.94 0.04 145 / 0.52));
+		box-shadow:
+			inset 0 0 0 1px oklch(0.72 0.04 75 / 0.34),
+			0 2px 0 oklch(0.42 0.1 145 / 0.08);
+	}
+
+	.adventure-stat::after {
+		content: '';
+		position: absolute;
+		inset: auto 8px 8px auto;
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+		background: oklch(0.58 0.16 145 / 0.2);
+		transform: rotate(45deg);
+	}
+
+	.adventure-stat-red {
+		background: linear-gradient(135deg, oklch(0.99 0.012 95 / 0.92), oklch(0.95 0.045 38 / 0.62));
+		box-shadow:
+			inset 0 0 0 1px oklch(0.74 0.08 40 / 0.34),
+			0 2px 0 oklch(0.46 0.11 42 / 0.08);
+	}
+
+	.adventure-stat-label,
+	.adventure-table-heading {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.28rem;
+		color: oklch(0.47 0.05 145);
+		font-size: 0.75rem;
+		font-weight: 700;
+	}
+
+	.adventure-stat-label-red {
+		color: oklch(0.46 0.1 42);
+	}
+
+	.adventure-table-heading {
+		width: 100%;
+		gap: 0.24rem;
+		color: oklch(0.48 0.035 75);
+		font-size: 0.7rem;
+		letter-spacing: 0.06em;
+	}
+
+	.calendar-stage {
+		position: relative;
+	}
+
+	.calendar-stage-cleared {
+		background: linear-gradient(
+			135deg,
+			oklch(0.98 0.015 92 / 0.9),
+			oklch(0.94 0.05 145 / 0.68)
+		) !important;
+	}
+
+	.stage-star {
+		color: oklch(0.68 0.14 84);
+		font-size: 0.72rem;
+		text-shadow: 0 1px 0 oklch(0.99 0.01 95);
+	}
+
+	.adventure-week-fill {
+		background: linear-gradient(90deg, oklch(0.5 0.15 146), oklch(0.67 0.15 118));
+		box-shadow: 0 0 10px oklch(0.55 0.15 140 / 0.24);
+	}
+
+	.adventure-week-fill-gold {
+		background: linear-gradient(90deg, oklch(0.6 0.13 82), oklch(0.78 0.14 88));
+	}
+
+	.adventure-week-fill-red {
+		background: linear-gradient(90deg, oklch(0.5 0.12 38), oklch(0.68 0.13 48));
+	}
+
+	.adventure-log-card {
+		background:
+			linear-gradient(90deg, oklch(0.75 0.045 75 / 0.18) 1px, transparent 1px) 0 0 / 18px 100%,
+			oklch(0.99 0.006 92 / 0.74);
+		box-shadow:
+			inset 0 0 0 1px oklch(0.74 0.035 74 / 0.34),
+			0 2px 0 oklch(0.42 0.1 145 / 0.08);
 	}
 }
 

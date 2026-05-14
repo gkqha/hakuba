@@ -5,9 +5,10 @@ import {
 	sortRecordsAscending,
 	todayInputValue,
 	toApiRecord,
+	toApiWeeklyRecord,
 	toDraft
 } from './scoring';
-import type { BackupPayload, StudyRecord } from './types';
+import type { BackupPayload, StudyRecord, WeeklyRecord } from './types';
 
 function downloadBlob(blob: Blob, filename: string) {
 	const url = URL.createObjectURL(blob);
@@ -18,11 +19,14 @@ function downloadBlob(blob: Blob, filename: string) {
 	URL.revokeObjectURL(url);
 }
 
-export function exportJson(records: StudyRecord[]) {
+export function exportJson(records: StudyRecord[], weeklyRecords: WeeklyRecord[] = []) {
 	const payload: BackupPayload = {
-		version: 1,
+		version: 2,
 		exportedAt: new Date().toISOString(),
-		records: sortRecordsAscending(records).map(toApiRecord)
+		records: sortRecordsAscending(records).map(toApiRecord),
+		weeklyRecords: [...weeklyRecords]
+			.sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+			.map(toApiWeeklyRecord)
 	};
 	const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
 	downloadBlob(blob, `hakuba-backup-${todayInputValue()}.json`);
@@ -67,8 +71,11 @@ export function exportXlsx(records: StudyRecord[]) {
 export async function readBackupFile(file: File) {
 	const text = await file.text();
 	const payload = JSON.parse(text) as Partial<BackupPayload>;
-	if (payload.version !== 1 || !Array.isArray(payload.records)) {
+	if ((payload.version !== 1 && payload.version !== 2) || !Array.isArray(payload.records)) {
 		throw new Error('备份文件格式不匹配');
 	}
-	return payload.records;
+	return {
+		records: payload.records,
+		weeklyRecords: Array.isArray(payload.weeklyRecords) ? payload.weeklyRecords : []
+	};
 }

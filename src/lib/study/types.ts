@@ -22,6 +22,22 @@ export type StudyRecord = {
 
 export type StudyRecordDraft = Omit<StudyRecord, 'id' | 'createdAt' | 'updatedAt' | 'syncState'>;
 
+export type WeeklyRecord = {
+	id: string;
+	weekKey: string;
+	weekStart: string;
+	studyMinutesTarget: number;
+	wordCountTarget: number;
+	gameMinutesBudget: number;
+	planNote: string;
+	reviewNote: string;
+	createdAt: string;
+	updatedAt: string;
+	syncState?: SyncState;
+};
+
+export type WeeklyRecordDraft = Omit<WeeklyRecord, 'id' | 'createdAt' | 'updatedAt' | 'syncState'>;
+
 export type ScoreBreakdown = {
 	studyPoints: number;
 	wordPoints: number;
@@ -45,7 +61,8 @@ export type DeletedRecord = {
 };
 
 export type BackupPayload = {
-	version: 1;
+	version: 1 | 2;
 	exportedAt: string;
 	records: StudyRecord[];
+	weeklyRecords?: WeeklyRecord[];
 };

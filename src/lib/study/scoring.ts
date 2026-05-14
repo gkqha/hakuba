@@ -3,7 +3,9 @@ import type {
 	ScoreBreakdown,
 	StudyRecord,
 	StudyRecordDraft,
-	TargetLevel
+	TargetLevel,
+	WeeklyRecord,
+	WeeklyRecordDraft
 } from './types';
 
 export const scoringRules = {
@@ -47,12 +49,30 @@ export function isWeekend(dateString: string) {
 	return day === 0 || day === 6;
 }
 
-export function getSuggestedTargetLevel(record: StudyRecordDraft): TargetLevel {
+export function getDefaultTargetLevel(dateString: string): TargetLevel {
+	return isWeekend(dateString) ? 2 : 1;
+}
+
+export function getTargetRequirements(targetLevel: TargetLevel) {
+	return targetLevel === 2
+		? { studyMinutes: 300, wordCount: 200 }
+		: { studyMinutes: 120, wordCount: 150 };
+}
+
+export function getTargetProgress(record: StudyRecordDraft) {
 	const studyMinutes = record.calculusMinutes + record.courseMinutes;
-	const weekend = isWeekend(record.date);
-	if (weekend && studyMinutes >= 300 && record.wordCount >= 200) return 2;
-	if (!weekend && studyMinutes >= 120 && record.wordCount >= 150) return 1;
-	return 0;
+	const requirements = getTargetRequirements(record.targetLevel);
+	const studyProgress = Math.min(1, studyMinutes / requirements.studyMinutes);
+	const wordProgress = Math.min(1, record.wordCount / requirements.wordCount);
+	const totalProgress = (studyProgress + wordProgress) / 2;
+
+	return {
+		requirements,
+		studyProgress,
+		wordProgress,
+		totalProgress,
+		studyMinutes
+	};
 }
 
 export function createDraft(date = todayInputValue()): StudyRecordDraft {
@@ -61,7 +81,7 @@ export function createDraft(date = todayInputValue()): StudyRecordDraft {
 		calculusMinutes: 0,
 		courseMinutes: 0,
 		wordCount: 0,
-		targetLevel: 0,
+		targetLevel: getDefaultTargetLevel(date),
 		chapterCount: 0,
 		wordRoundCount: 0,
 		manualBonus: 0,
@@ -74,7 +94,7 @@ export function normalizeDraft(input: Partial<StudyRecordDraft>): StudyRecordDra
 	const date = typeof input.date === 'string' && input.date ? input.date : todayInputValue();
 	const targetLevel = isTargetLevel(Number(input.targetLevel))
 		? (Number(input.targetLevel) as TargetLevel)
-		: 0;
+		: getDefaultTargetLevel(date);
 
 	return {
 		date,
@@ -119,12 +139,18 @@ export function toDraft(record: StudyRecord): StudyRecordDraft {
 
 export function scoreRecord(record: StudyRecordDraft): ScoreBreakdown {
 	const studyMinutes = record.calculusMinutes + record.courseMinutes;
+	const requirements = getTargetRequirements(record.targetLevel);
+	const targetComplete =
+		record.targetLevel !== 0 &&
+		studyMinutes >= requirements.studyMinutes &&
+		record.wordCount >= requirements.wordCount;
 	const studyPoints =
 		Math.floor(studyMinutes / scoringRules.minutesBlock) * scoringRules.minutesBlockPoints;
 	const wordPoints =
 		Math.floor(record.wordCount / scoringRules.wordsBlock) * scoringRules.wordsBlockPoints;
-	const targetBonus =
-		record.targetLevel === 2
+	const targetBonus = !targetComplete
+		? 0
+		: record.targetLevel === 2
 			? scoringRules.weekendTargetBonus
 			: record.targetLevel === 1
 				? scoringRules.weekdayTargetBonus
@@ -195,6 +221,79 @@ export function getCurrentStreak(records: StudyRecord[], today = todayInputValue
 
 export function getMonthKey(date = todayInputValue()) {
 	return date.slice(0, 7);
+}
+
+export function getWeekStart(dateString = todayInputValue()) {
+	const date = new Date(`${dateString}T00:00:00`);
+	const mondayOffset = (date.getDay() + 6) % 7;
+	date.setDate(date.getDate() - mondayOffset);
+	return todayInputValue(date);
+}
+
+export function getWeekKey(dateString = todayInputValue()) {
+	return getWeekStart(dateString);
+}
+
+export function createWeeklyDraft(date = todayInputValue()): WeeklyRecordDraft {
+	const weekStart = getWeekStart(date);
+	return {
+		weekKey: weekStart,
+		weekStart,
+		studyMinutesTarget: 0,
+		wordCountTarget: 0,
+		gameMinutesBudget: 0,
+		planNote: '',
+		reviewNote: ''
+	};
+}
+
+export function normalizeWeeklyDraft(input: Partial<WeeklyRecordDraft>): WeeklyRecordDraft {
+	const weekStart =
+		typeof input.weekStart === 'string' && input.weekStart
+			? getWeekStart(input.weekStart)
+			: getWeekStart(typeof input.weekKey === 'string' ? input.weekKey : todayInputValue());
+
+	return {
+		weekKey: weekStart,
+		weekStart,
+		studyMinutesTarget: clampNumber(input.studyMinutesTarget),
+		wordCountTarget: clampNumber(input.wordCountTarget),
+		gameMinutesBudget: clampNumber(input.gameMinutesBudget),
+		planNote: typeof input.planNote === 'string' ? input.planNote.trim() : '',
+		reviewNote: typeof input.reviewNote === 'string' ? input.reviewNote.trim() : ''
+	};
+}
+
+export function toWeeklyRecord(
+	input: Partial<WeeklyRecordDraft> & Partial<WeeklyRecord>
+): WeeklyRecord {
+	const draft = normalizeWeeklyDraft(input);
+	const timestamp = nowIso();
+	return {
+		...draft,
+		id: draft.weekKey,
+		createdAt: typeof input.createdAt === 'string' ? input.createdAt : timestamp,
+		updatedAt: typeof input.updatedAt === 'string' ? input.updatedAt : timestamp,
+		syncState: input.syncState
+	};
+}
+
+export function toWeeklyDraft(record: WeeklyRecord): WeeklyRecordDraft {
+	return {
+		weekKey: record.weekKey,
+		weekStart: record.weekStart,
+		studyMinutesTarget: record.studyMinutesTarget,
+		wordCountTarget: record.wordCountTarget,
+		gameMinutesBudget: record.gameMinutesBudget,
+		planNote: record.planNote,
+		reviewNote: record.reviewNote
+	};
+}
+
+export function toApiWeeklyRecord(record: WeeklyRecord): WeeklyRecord {
+	const clean = { ...record };
+	delete clean.syncState;
+	return clean;
 }
 
 export function toApiRecord(record: StudyRecord): StudyRecord {
