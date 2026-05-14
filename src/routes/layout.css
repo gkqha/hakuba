@@ -1,0 +1,83 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+@layer base {
+	:root {
+		font-family:
+			'Avenir Next', 'Hiragino Sans GB', 'PingFang SC', 'Microsoft YaHei', ui-sans-serif, system-ui,
+			sans-serif;
+		color: oklch(0.22 0.025 75);
+		background: oklch(0.95 0.018 88);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+
+	html {
+		min-height: 100%;
+		background: oklch(0.95 0.018 88);
+	}
+
+	body {
+		min-height: 100vh;
+		margin: 0;
+		background:
+			linear-gradient(90deg, oklch(0.86 0.037 34 / 0.24) 1px, transparent 1px) 0 0 / 32px 32px,
+			linear-gradient(oklch(0.78 0.026 70 / 0.18) 1px, transparent 1px) 0 0 / 100% 32px,
+			oklch(0.95 0.018 88);
+	}
+
+	button,
+	input,
+	select,
+	textarea {
+		font: inherit;
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	button,
+	a,
+	input,
+	select,
+	textarea {
+		touch-action: manipulation;
+	}
+}
+
+@layer components {
+	.paper-sheet {
+		background:
+			linear-gradient(90deg, oklch(0.82 0.038 34 / 0.16) 1px, transparent 1px) 28px 0 / 32px 100%,
+			linear-gradient(oklch(0.78 0.026 70 / 0.2) 1px, transparent 1px) 0 25px / 100% 32px,
+			oklch(0.985 0.011 92);
+		box-shadow:
+			0 1px 1px oklch(0.27 0.03 70 / 0.08),
+			0 18px 48px oklch(0.3 0.025 62 / 0.12);
+	}
+
+	.ink-numbers {
+		font-variant-numeric: tabular-nums;
+	}
+
+	.points-meter {
+		background:
+			radial-gradient(circle at 50% 52%, oklch(0.99 0.006 95) 0 42%, transparent 43%),
+			conic-gradient(
+				from -110deg,
+				oklch(0.53 0.13 152) 0deg,
+				oklch(0.7 0.12 82) 118deg,
+				oklch(0.64 0.15 43) 218deg,
+				oklch(0.88 0.025 78) 219deg 360deg
+			);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+		transition-duration: 0.001ms !important;
+	}
+}

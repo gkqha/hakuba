@@ -1,0 +1,52 @@
+{
+	"name": "hakuba",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "bun --bun node_modules/.bin/vite dev",
+		"build": "bun --bun node_modules/.bin/vite build",
+		"preview": "bun --bun node_modules/.bin/vite preview",
+		"pages:dev": "bun run build && wrangler pages dev --binding APP_PASSCODE=local-dev-passcode",
+		"db:migrate:local": "wrangler d1 migrations apply hakuba --local",
+		"db:migrate:remote": "wrangler d1 migrations apply hakuba --remote",
+		"prepare": "bun --bun node_modules/.bin/svelte-kit sync || echo ''",
+		"check": "bun --bun node_modules/.bin/svelte-kit sync && bun --bun node_modules/.bin/svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "bun --bun node_modules/.bin/svelte-kit sync && bun --bun node_modules/.bin/svelte-check --tsconfig ./tsconfig.json --watch",
+		"check:ref": "bun scripts/check-ref-logic.ts",
+		"lint": "prettier --check . && eslint .",
+		"format": "prettier --write ."
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260511.1",
+		"@eslint/compat": "^2.0.4",
+		"@eslint/js": "^10.0.1",
+		"@sveltejs/adapter-cloudflare": "^7.2.8",
+		"@sveltejs/kit": "^2.57.0",
+		"@sveltejs/vite-plugin-svelte": "^7.0.0",
+		"@tailwindcss/forms": "^0.5.11",
+		"@tailwindcss/typography": "^0.5.19",
+		"@tailwindcss/vite": "^4.2.2",
+		"@types/node": "^24",
+		"eslint": "^10.2.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-svelte": "^3.17.0",
+		"globals": "^17.4.0",
+		"mdsvex": "^0.12.7",
+		"prettier": "^3.8.1",
+		"prettier-plugin-svelte": "^3.5.1",
+		"prettier-plugin-tailwindcss": "^0.7.2",
+		"svelte": "^5.55.2",
+		"svelte-check": "^4.4.6",
+		"tailwindcss": "^4.2.2",
+		"typescript": "^6.0.2",
+		"typescript-eslint": "^8.58.1",
+		"vite": "^8.0.7",
+		"wrangler": "^4.90.1"
+	},
+	"dependencies": {
+		"dexie": "^4.4.2",
+		"lucide-svelte": "^1.0.1",
+		"xlsx": "^0.18.5"
+	}
+}
