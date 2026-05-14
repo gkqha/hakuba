@@ -53,6 +53,14 @@ Build output directory:
 .svelte-kit/cloudflare
 ```
 
+Deploy command:
+
+```sh
+bun run deploy
+```
+
+Do not set the deploy command to `npx wrangler deploy`. That command starts Wrangler's Workers auto-configuration flow, which rewrites the build step in CI and expects a generated `worker-configuration.d.ts` file. This project builds Pages output, so the deploy step must use `wrangler pages deploy .svelte-kit/cloudflare --project-name hakuba`.
+
 环境变量和绑定：
 
 - `APP_PASSCODE`: 私人口令，作为单人使用的轻量保护。
