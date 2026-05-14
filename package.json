@@ -8,7 +8,7 @@
 		"build": "bun --bun node_modules/.bin/vite build",
 		"deploy": "sh -c 'wrangler pages deploy .svelte-kit/cloudflare --project-name \"${CLOUDFLARE_PAGES_PROJECT_NAME:-hakuba}\" --branch \"${CLOUDFLARE_PAGES_BRANCH:-main}\"'",
 		"preview": "bun --bun node_modules/.bin/vite preview",
-		"pages:dev": "bun run build && wrangler pages dev",
+		"pages:dev": "bun run build && wrangler pages dev --binding APP_PASSCODE=local-dev-passcode",
 		"db:migrate:local": "wrangler d1 migrations apply hakuba --local",
 		"db:migrate:remote": "wrangler d1 migrations apply hakuba --remote",
 		"prepare": "bun --bun node_modules/.bin/svelte-kit sync || echo ''",
