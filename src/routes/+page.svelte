@@ -65,6 +65,7 @@
 		toWeeklyDraft,
 		toWeeklyRecord
 	} from '$lib/study/scoring';
+	import { collectLocalRecordsToUpload, mergeRemoteRecords } from '$lib/study/sync';
 	import type {
 		StudyRecord,
 		StudyRecordDraft,
@@ -371,13 +372,41 @@
 
 			const remoteRecords = await fetchRemoteRecords(passcode);
 			const remoteWeeklyRecords = await fetchRemoteWeeklyRecords(passcode);
+			const localRecords = await localDb.records.toArray();
+			const localWeeklyRecords = await localDb.weeklyRecords.toArray();
+			const localRecordsToUpload = collectLocalRecordsToUpload(
+				localRecords,
+				remoteRecords,
+				(record) => record.date
+			);
+			const localWeeklyRecordsToUpload = collectLocalRecordsToUpload(
+				localWeeklyRecords,
+				remoteWeeklyRecords,
+				(record) => record.weekKey
+			);
+			const uploadedRecords = await Promise.all(
+				localRecordsToUpload.map((record) => saveRemoteRecord(passcode, record))
+			);
+			const uploadedWeeklyRecords = await Promise.all(
+				localWeeklyRecordsToUpload.map((record) => saveRemoteWeeklyRecord(passcode, record))
+			);
+			const mergedRemoteRecords = mergeRemoteRecords(
+				remoteRecords,
+				uploadedRecords,
+				(record) => record.date
+			);
+			const mergedRemoteWeeklyRecords = mergeRemoteRecords(
+				remoteWeeklyRecords,
+				uploadedWeeklyRecords,
+				(record) => record.weekKey
+			);
 			await localDb.records.clear();
 			await localDb.records.bulkPut(
-				remoteRecords.map((record) => ({ ...record, syncState: 'synced' }))
+				mergedRemoteRecords.map((record) => ({ ...record, syncState: 'synced' }))
 			);
 			await localDb.weeklyRecords.clear();
 			await localDb.weeklyRecords.bulkPut(
-				remoteWeeklyRecords.map((record) => ({ ...record, syncState: 'synced' }))
+				mergedRemoteWeeklyRecords.map((record) => ({ ...record, syncState: 'synced' }))
 			);
 			await refreshRecords();
 			await refreshWeeklyRecords();
