@@ -97,6 +97,32 @@
 		label: string;
 		value: string | number;
 	};
+	type ProgressRow = {
+		label: string;
+		value: number;
+		className?: string;
+	};
+	type DraftField<T> = {
+		field: T;
+		icon: IconComponent;
+		label: string;
+		tone?: Tone;
+	};
+
+	const studyMinuteFields: DraftField<NumericDraftField>[] = [
+		{ field: 'calculusMinutes', icon: Calculator, label: '高数分钟' },
+		{ field: 'courseMinutes', icon: BookOpen, label: '专业分钟' }
+	];
+	const bonusFields: DraftField<NumericDraftField>[] = [
+		{ field: 'chapterCount', icon: BookMarked, label: '章节' },
+		{ field: 'wordRoundCount', icon: Repeat2, label: '轮背' },
+		{ field: 'manualBonus', icon: BadgePlus, label: '附加' }
+	];
+	const weeklyTargetFields: DraftField<WeeklyNumericDraftField>[] = [
+		{ field: 'studyMinutesTarget', icon: BookOpen, label: '学习分钟' },
+		{ field: 'wordCountTarget', icon: Brain, label: '单词数' },
+		{ field: 'gameMinutesBudget', icon: Gamepad2, label: '游戏预算', tone: 'red' }
+	];
 
 	let records = $state<StudyRecord[]>([]);
 	let weeklyRecords = $state<WeeklyRecord[]>([]);
@@ -200,6 +226,11 @@
 			? Math.min(100, Math.round((weekGameMinutes / cleanedWeeklyDraft.gameMinutesBudget) * 100))
 			: 0
 	);
+	let weeklyProgressRows = $derived<ProgressRow[]>([
+		{ label: '学习计划', value: weekStudyProgress },
+		{ label: '单词计划', value: weekWordProgress, className: 'adventure-week-fill-gold' },
+		{ label: '游戏预算', value: weekGameProgress, className: 'adventure-week-fill-red' }
+	]);
 	let weeklySummaryStats = $derived<StatCard[]>([
 		{ icon: BookOpen, label: '学习', value: formatMinutes(weekStudyMinutes) },
 		{ icon: Brain, label: '单词', value: weekWords },
@@ -246,14 +277,22 @@
 		loadWeeklyDraft(draft.date);
 	}
 
+	async function refreshRecords() {
+		records = sortRecordsAscending(await localDb.records.toArray());
+	}
+
+	async function refreshWeeklyRecords() {
+		weeklyRecords = sortWeeklyRecordsAscending(await localDb.weeklyRecords.toArray());
+	}
+
 	async function saveLocalRecord(record: StudyRecord) {
 		await localDb.records.put(record);
-		records = sortRecordsAscending(await localDb.records.toArray());
+		await refreshRecords();
 	}
 
 	async function saveLocalWeeklyRecord(record: WeeklyRecord) {
 		await localDb.weeklyRecords.put(record);
-		weeklyRecords = sortWeeklyRecordsAscending(await localDb.weeklyRecords.toArray());
+		await refreshWeeklyRecords();
 	}
 
 	async function saveRecord() {
@@ -340,8 +379,8 @@
 			await localDb.weeklyRecords.bulkPut(
 				remoteWeeklyRecords.map((record) => ({ ...record, syncState: 'synced' }))
 			);
-			records = sortRecordsAscending(await localDb.records.toArray());
-			weeklyRecords = sortWeeklyRecordsAscending(await localDb.weeklyRecords.toArray());
+			await refreshRecords();
+			await refreshWeeklyRecords();
 			loadWeeklyDraft(cleanedDraft.date);
 			statusText = 'D1 已同步';
 		} catch (error) {
@@ -379,13 +418,16 @@
 	}
 
 	function setDraftNumber(field: NumericDraftField, event: Event) {
-		const value = (event.currentTarget as HTMLInputElement).value;
-		draft[field] = value === '' ? 0 : Number(value);
+		draft[field] = eventNumber(event);
 	}
 
 	function setWeeklyDraftNumber(field: WeeklyNumericDraftField, event: Event) {
+		weeklyDraft[field] = eventNumber(event);
+	}
+
+	function eventNumber(event: Event) {
 		const value = (event.currentTarget as HTMLInputElement).value;
-		weeklyDraft[field] = value === '' ? 0 : Number(value);
+		return value === '' ? 0 : Number(value);
 	}
 
 	function sortWeeklyRecordsAscending(records: WeeklyRecord[]) {
@@ -435,7 +477,7 @@
 				statusText = '删除已记入待同步';
 			}
 		}
-		records = sortRecordsAscending(await localDb.records.toArray());
+		await refreshRecords();
 		draft = createDraft(date);
 	}
 
@@ -455,8 +497,8 @@
 			);
 			await localDb.records.bulkPut(nextRecords);
 			if (nextWeeklyRecords.length > 0) await localDb.weeklyRecords.bulkPut(nextWeeklyRecords);
-			records = sortRecordsAscending(await localDb.records.toArray());
-			weeklyRecords = sortWeeklyRecordsAscending(await localDb.weeklyRecords.toArray());
+			await refreshRecords();
+			await refreshWeeklyRecords();
 			loadWeeklyDraft(cleanedDraft.date);
 			statusText = passcode ? '备份已导入，等待同步' : '备份已导入本地';
 			if (passcode) await syncRecords();
@@ -530,6 +572,46 @@
 		<Icon size={13} />
 		{label}
 	</span>
+{/snippet}
+
+{#snippet progressRow(row: ProgressRow)}
+	<div>
+		<div class="mb-1 flex justify-between text-xs font-semibold text-[oklch(0.45_0.035_75)]">
+			<span>{row.label}</span><span class="ink-numbers">{row.value}%</span>
+		</div>
+		<div class="h-2 overflow-hidden rounded-full bg-[oklch(0.88_0.03_86)]">
+			<div
+				class={['adventure-week-fill h-full rounded-full', row.className ?? '']}
+				style={`width: ${row.value}%;`}
+			></div>
+		</div>
+	</div>
+{/snippet}
+
+{#snippet numericField(field: DraftField<NumericDraftField>)}
+	<label class="grid gap-1 text-sm font-semibold">
+		{@render iconText(field.icon, field.label)}
+		<input
+			class={['ledger-input text-right', field.tone === 'red' ? 'ledger-input-red' : '']}
+			type="number"
+			min="0"
+			value={numberInputValue(draft[field.field])}
+			oninput={(event) => setDraftNumber(field.field, event)}
+		/>
+	</label>
+{/snippet}
+
+{#snippet weeklyNumericField(field: DraftField<WeeklyNumericDraftField>)}
+	<label class="grid gap-1 text-sm font-semibold">
+		{@render iconText(field.icon, field.label)}
+		<input
+			class={['ledger-input text-right', field.tone === 'red' ? 'ledger-input-red' : '']}
+			type="number"
+			min="0"
+			value={numberInputValue(weeklyDraft[field.field])}
+			oninput={(event) => setWeeklyDraftNumber(field.field, event)}
+		/>
+	</label>
 {/snippet}
 
 <main id="main-content" class="min-h-screen px-4 py-5 text-[oklch(0.23_0.03_75)] sm:px-6 lg:px-8">
@@ -668,7 +750,7 @@
 					<label class="grid gap-1 text-sm font-semibold">
 						{@render iconText(CalendarCheck, '日期')}
 						<input
-							class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
+							class="ledger-input"
 							type="date"
 							value={draft.date}
 							onchange={(event) => selectDate((event.currentTarget as HTMLInputElement).value)}
@@ -725,70 +807,17 @@
 
 						<div class="grid gap-3">
 							<div class="grid grid-cols-2 gap-3">
-								<label class="grid gap-1 text-sm font-semibold">
-									{@render iconText(Calculator, '高数分钟')}
-									<input
-										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-										type="number"
-										min="0"
-										value={numberInputValue(draft.calculusMinutes)}
-										oninput={(event) => setDraftNumber('calculusMinutes', event)}
-									/>
-								</label>
-								<label class="grid gap-1 text-sm font-semibold">
-									{@render iconText(BookOpen, '专业分钟')}
-									<input
-										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-										type="number"
-										min="0"
-										value={numberInputValue(draft.courseMinutes)}
-										oninput={(event) => setDraftNumber('courseMinutes', event)}
-									/>
-								</label>
+								{#each studyMinuteFields as field (field.field)}
+									{@render numericField(field)}
+								{/each}
 							</div>
 
-							<label class="grid gap-1 text-sm font-semibold">
-								{@render iconText(Brain, '单词数')}
-								<input
-									class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-									type="number"
-									min="0"
-									value={numberInputValue(draft.wordCount)}
-									oninput={(event) => setDraftNumber('wordCount', event)}
-								/>
-							</label>
+							{@render numericField({ field: 'wordCount', icon: Brain, label: '单词数' })}
 
 							<div class="grid grid-cols-3 gap-3">
-								<label class="grid gap-1 text-sm font-semibold">
-									{@render iconText(BookMarked, '章节')}
-									<input
-										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-										type="number"
-										min="0"
-										value={numberInputValue(draft.chapterCount)}
-										oninput={(event) => setDraftNumber('chapterCount', event)}
-									/>
-								</label>
-								<label class="grid gap-1 text-sm font-semibold">
-									{@render iconText(Repeat2, '轮背')}
-									<input
-										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-										type="number"
-										min="0"
-										value={numberInputValue(draft.wordRoundCount)}
-										oninput={(event) => setDraftNumber('wordRoundCount', event)}
-									/>
-								</label>
-								<label class="grid gap-1 text-sm font-semibold">
-									{@render iconText(BadgePlus, '附加')}
-									<input
-										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-										type="number"
-										min="0"
-										value={numberInputValue(draft.manualBonus)}
-										oninput={(event) => setDraftNumber('manualBonus', event)}
-									/>
-								</label>
+								{#each bonusFields as field (field.field)}
+									{@render numericField(field)}
+								{/each}
 							</div>
 						</div>
 					</section>
@@ -805,24 +834,17 @@
 								账户 {previewNetMinutes >= 0 ? '+' : ''}{previewNetMinutes}分
 							</span>
 						</div>
-						<label class="grid gap-1 text-sm font-semibold">
-							{@render iconText(Clock3, '实际游戏')}
-							<input
-								class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.06_42/0.48)] focus:shadow-[inset_0_0_0_2px_oklch(0.54_0.12_42)] focus:outline-none"
-								type="number"
-								min="0"
-								value={numberInputValue(draft.gameMinutes)}
-								oninput={(event) => setDraftNumber('gameMinutes', event)}
-							/>
-						</label>
+						{@render numericField({
+							field: 'gameMinutes',
+							icon: Clock3,
+							label: '实际游戏',
+							tone: 'red'
+						})}
 					</section>
 
 					<label class="grid gap-1 text-sm font-semibold">
 						{@render iconText(ScrollText, '备注')}
-						<textarea
-							class="min-h-24 resize-y rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 py-2 shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-							bind:value={draft.note}
-						></textarea>
+						<textarea class="ledger-textarea" bind:value={draft.note}></textarea>
 					</label>
 				</div>
 
@@ -1061,44 +1083,14 @@
 							</div>
 
 							<div class="grid grid-cols-3 gap-3">
-								<label class="grid gap-1 text-sm font-semibold">
-									{@render iconText(BookOpen, '学习分钟')}
-									<input
-										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-										type="number"
-										min="0"
-										value={numberInputValue(weeklyDraft.studyMinutesTarget)}
-										oninput={(event) => setWeeklyDraftNumber('studyMinutesTarget', event)}
-									/>
-								</label>
-								<label class="grid gap-1 text-sm font-semibold">
-									{@render iconText(Brain, '单词数')}
-									<input
-										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-										type="number"
-										min="0"
-										value={numberInputValue(weeklyDraft.wordCountTarget)}
-										oninput={(event) => setWeeklyDraftNumber('wordCountTarget', event)}
-									/>
-								</label>
-								<label class="grid gap-1 text-sm font-semibold">
-									{@render iconText(Gamepad2, '游戏预算')}
-									<input
-										class="h-11 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-right shadow-[inset_0_0_0_1px_oklch(0.72_0.06_42/0.48)] focus:shadow-[inset_0_0_0_2px_oklch(0.54_0.12_42)] focus:outline-none"
-										type="number"
-										min="0"
-										value={numberInputValue(weeklyDraft.gameMinutesBudget)}
-										oninput={(event) => setWeeklyDraftNumber('gameMinutesBudget', event)}
-									/>
-								</label>
+								{#each weeklyTargetFields as field (field.field)}
+									{@render weeklyNumericField(field)}
+								{/each}
 							</div>
 
 							<label class="mt-3 grid gap-1 text-sm font-semibold">
 								{@render iconText(ScrollText, '计划备注')}
-								<textarea
-									class="min-h-24 resize-y rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 py-2 shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-									bind:value={weeklyDraft.planNote}
-								></textarea>
+								<textarea class="ledger-textarea" bind:value={weeklyDraft.planNote}></textarea>
 							</label>
 						</div>
 
@@ -1129,53 +1121,14 @@
 							</div>
 
 							<div class="mt-3 grid gap-2">
-								<div>
-									<div
-										class="mb-1 flex justify-between text-xs font-semibold text-[oklch(0.45_0.035_75)]"
-									>
-										<span>学习计划</span><span class="ink-numbers">{weekStudyProgress}%</span>
-									</div>
-									<div class="h-2 overflow-hidden rounded-full bg-[oklch(0.88_0.03_86)]">
-										<div
-											class="adventure-week-fill h-full rounded-full"
-											style={`width: ${weekStudyProgress}%;`}
-										></div>
-									</div>
-								</div>
-								<div>
-									<div
-										class="mb-1 flex justify-between text-xs font-semibold text-[oklch(0.45_0.035_75)]"
-									>
-										<span>单词计划</span><span class="ink-numbers">{weekWordProgress}%</span>
-									</div>
-									<div class="h-2 overflow-hidden rounded-full bg-[oklch(0.88_0.03_86)]">
-										<div
-											class="adventure-week-fill adventure-week-fill-gold h-full rounded-full"
-											style={`width: ${weekWordProgress}%;`}
-										></div>
-									</div>
-								</div>
-								<div>
-									<div
-										class="mb-1 flex justify-between text-xs font-semibold text-[oklch(0.45_0.035_75)]"
-									>
-										<span>游戏预算</span><span class="ink-numbers">{weekGameProgress}%</span>
-									</div>
-									<div class="h-2 overflow-hidden rounded-full bg-[oklch(0.88_0.03_86)]">
-										<div
-											class="adventure-week-fill adventure-week-fill-red h-full rounded-full"
-											style={`width: ${weekGameProgress}%;`}
-										></div>
-									</div>
-								</div>
+								{#each weeklyProgressRows as row (row.label)}
+									{@render progressRow(row)}
+								{/each}
 							</div>
 
 							<label class="mt-3 grid gap-1 text-sm font-semibold">
 								{@render iconText(History, '复盘')}
-								<textarea
-									class="min-h-24 resize-y rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 py-2 shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-									bind:value={weeklyDraft.reviewNote}
-								></textarea>
+								<textarea class="ledger-textarea" bind:value={weeklyDraft.reviewNote}></textarea>
 							</label>
 						</div>
 					</div>
