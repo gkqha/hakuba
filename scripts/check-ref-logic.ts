@@ -1,4 +1,9 @@
-import { buildLedger, scoreRecord } from '../src/lib/study/scoring';
+import {
+	buildLedger,
+	isRecommendedTargetComplete,
+	normalizeWeeklyDraft,
+	scoreRecord
+} from '../src/lib/study/scoring';
 import type { StudyRecord } from '../src/lib/study/types';
 
 const timestamp = '2026-05-14T00:00:00.000Z';
@@ -67,10 +72,10 @@ const records: StudyRecord[] = [
 ];
 
 const expected = new Map([
-	['2026-05-14', { totalPoints: 85, exchangeableMinutes: 85, balanceAfter: 25 }],
-	['2026-05-15', { totalPoints: 45, exchangeableMinutes: 45, balanceAfter: -10 }],
-	['2026-05-16', { totalPoints: 85, exchangeableMinutes: 85, balanceAfter: -45 }],
-	['2026-05-17', { totalPoints: 210, exchangeableMinutes: 210, balanceAfter: -15 }]
+	['2026-05-14', { totalPoints: 95, exchangeableMinutes: 95, balanceAfter: 35 }],
+	['2026-05-15', { totalPoints: 60, exchangeableMinutes: 60, balanceAfter: 15 }],
+	['2026-05-16', { totalPoints: 100, exchangeableMinutes: 100, balanceAfter: -5 }],
+	['2026-05-17', { totalPoints: 230, exchangeableMinutes: 220, balanceAfter: 35 }]
 ]);
 
 for (const record of records) {
@@ -96,6 +101,18 @@ for (const row of buildLedger(records)) {
 			`${row.record.date} expected balance ${target.balanceAfter}, got ${row.balanceAfter}`
 		);
 	}
+}
+
+const completedRecommendedDays = records.filter((record) =>
+	isRecommendedTargetComplete(record)
+).length;
+if (completedRecommendedDays !== 2) {
+	throw new Error(`expected 2 completed recommended days, got ${completedRecommendedDays}`);
+}
+
+const weeklyDraft = normalizeWeeklyDraft({ recommendedDaysTarget: 9 });
+if (weeklyDraft.recommendedDaysTarget !== 7) {
+	throw new Error(`expected weekly target to clamp at 7, got ${weeklyDraft.recommendedDaysTarget}`);
 }
 
 console.log('ref.xls scoring samples matched');

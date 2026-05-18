@@ -12,7 +12,7 @@ export const scoringRules = {
 	minutesBlock: 30,
 	minutesBlockPoints: 15,
 	wordsBlock: 50,
-	wordsBlockPoints: 5,
+	wordsBlockPoints: 10,
 	weekdayTargetBonus: 10,
 	weekendTargetBonus: 20,
 	longStudyThreshold: 240,
@@ -139,11 +139,7 @@ export function toDraft(record: StudyRecord): StudyRecordDraft {
 
 export function scoreRecord(record: StudyRecordDraft): ScoreBreakdown {
 	const studyMinutes = record.calculusMinutes + record.courseMinutes;
-	const requirements = getTargetRequirements(record.targetLevel);
-	const targetComplete =
-		record.targetLevel !== 0 &&
-		studyMinutes >= requirements.studyMinutes &&
-		record.wordCount >= requirements.wordCount;
+	const targetComplete = isRecommendedTargetComplete(record);
 	const studyPoints =
 		Math.floor(studyMinutes / scoringRules.minutesBlock) * scoringRules.minutesBlockPoints;
 	const wordPoints =
@@ -180,6 +176,16 @@ export function scoreRecord(record: StudyRecordDraft): ScoreBreakdown {
 		totalPoints,
 		exchangeableMinutes
 	};
+}
+
+export function isRecommendedTargetComplete(record: StudyRecordDraft) {
+	const studyMinutes = record.calculusMinutes + record.courseMinutes;
+	const requirements = getTargetRequirements(record.targetLevel);
+	return (
+		record.targetLevel !== 0 &&
+		studyMinutes >= requirements.studyMinutes &&
+		record.wordCount >= requirements.wordCount
+	);
 }
 
 export function sortRecordsAscending(records: StudyRecord[]) {
@@ -239,9 +245,7 @@ export function createWeeklyDraft(date = todayInputValue()): WeeklyRecordDraft {
 	return {
 		weekKey: weekStart,
 		weekStart,
-		studyMinutesTarget: 0,
-		wordCountTarget: 0,
-		gameMinutesBudget: 0,
+		recommendedDaysTarget: 0,
 		planNote: '',
 		reviewNote: ''
 	};
@@ -256,9 +260,7 @@ export function normalizeWeeklyDraft(input: Partial<WeeklyRecordDraft>): WeeklyR
 	return {
 		weekKey: weekStart,
 		weekStart,
-		studyMinutesTarget: clampNumber(input.studyMinutesTarget),
-		wordCountTarget: clampNumber(input.wordCountTarget),
-		gameMinutesBudget: clampNumber(input.gameMinutesBudget),
+		recommendedDaysTarget: Math.min(7, clampNumber(input.recommendedDaysTarget)),
 		planNote: typeof input.planNote === 'string' ? input.planNote.trim() : '',
 		reviewNote: typeof input.reviewNote === 'string' ? input.reviewNote.trim() : ''
 	};
@@ -282,9 +284,7 @@ export function toWeeklyDraft(record: WeeklyRecord): WeeklyRecordDraft {
 	return {
 		weekKey: record.weekKey,
 		weekStart: record.weekStart,
-		studyMinutesTarget: record.studyMinutesTarget,
-		wordCountTarget: record.wordCountTarget,
-		gameMinutesBudget: record.gameMinutesBudget,
+		recommendedDaysTarget: Math.min(7, clampNumber(record.recommendedDaysTarget)),
 		planNote: record.planNote,
 		reviewNote: record.reviewNote
 	};

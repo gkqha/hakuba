@@ -26,9 +26,7 @@ export type WeeklyRecord = {
 	id: string;
 	weekKey: string;
 	weekStart: string;
-	studyMinutesTarget: number;
-	wordCountTarget: number;
-	gameMinutesBudget: number;
+	recommendedDaysTarget: number;
 	planNote: string;
 	reviewNote: string;
 	createdAt: string;
@@ -61,7 +59,7 @@ export type DeletedRecord = {
 };
 
 export type BackupPayload = {
-	version: 1 | 2;
+	version: 1 | 2 | 3;
 	exportedAt: string;
 	records: StudyRecord[];
 	weeklyRecords?: WeeklyRecord[];

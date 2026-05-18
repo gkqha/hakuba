@@ -5,9 +5,7 @@ type WeeklyRecordRow = {
 	id: string;
 	week_key: string;
 	week_start: string;
-	study_minutes_target: number;
-	word_count_target: number;
-	game_minutes_budget: number;
+	recommended_days_target: number;
 	plan_note: string;
 	review_note: string;
 	created_at: string;
@@ -18,9 +16,7 @@ const columns = `
 	id,
 	week_key,
 	week_start,
-	study_minutes_target,
-	word_count_target,
-	game_minutes_budget,
+	recommended_days_target,
 	plan_note,
 	review_note,
 	created_at,
@@ -32,9 +28,7 @@ function fromRow(row: WeeklyRecordRow): WeeklyRecord {
 		id: row.id,
 		weekKey: row.week_key,
 		weekStart: row.week_start,
-		studyMinutesTarget: row.study_minutes_target,
-		wordCountTarget: row.word_count_target,
-		gameMinutesBudget: row.game_minutes_budget,
+		recommendedDaysTarget: row.recommended_days_target,
 		planNote: row.plan_note,
 		reviewNote: row.review_note,
 		createdAt: row.created_at,
@@ -70,20 +64,16 @@ export async function upsertWeeklyRecord(db: D1Database, input: Partial<WeeklyRe
 				id,
 				week_key,
 				week_start,
-				study_minutes_target,
-				word_count_target,
-				game_minutes_budget,
+				recommended_days_target,
 				plan_note,
 				review_note,
 				created_at,
 				updated_at
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(week_key) DO UPDATE SET
 				week_start = excluded.week_start,
-				study_minutes_target = excluded.study_minutes_target,
-				word_count_target = excluded.word_count_target,
-				game_minutes_budget = excluded.game_minutes_budget,
+				recommended_days_target = excluded.recommended_days_target,
 				plan_note = excluded.plan_note,
 				review_note = excluded.review_note,
 				updated_at = excluded.updated_at
@@ -93,9 +83,7 @@ export async function upsertWeeklyRecord(db: D1Database, input: Partial<WeeklyRe
 			weeklyRecord.id,
 			weeklyRecord.weekKey,
 			weeklyRecord.weekStart,
-			weeklyRecord.studyMinutesTarget,
-			weeklyRecord.wordCountTarget,
-			weeklyRecord.gameMinutesBudget,
+			weeklyRecord.recommendedDaysTarget,
 			weeklyRecord.planNote,
 			weeklyRecord.reviewNote,
 			createdAt,

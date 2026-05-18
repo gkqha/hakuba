@@ -55,6 +55,7 @@
 		getMonthKey,
 		getTargetProgress,
 		getWeekKey,
+		isRecommendedTargetComplete,
 		normalizeDraft,
 		normalizeWeeklyDraft,
 		scoreRecord,
@@ -83,7 +84,7 @@
 		| 'wordRoundCount'
 		| 'manualBonus'
 		| 'gameMinutes';
-	type WeeklyNumericDraftField = 'studyMinutesTarget' | 'wordCountTarget' | 'gameMinutesBudget';
+	type WeeklyNumericDraftField = 'recommendedDaysTarget';
 	type IconComponent = typeof Coins;
 	type Tone = 'default' | 'red';
 	type StatCard = {
@@ -97,11 +98,6 @@
 		icon: IconComponent;
 		label: string;
 		value: string | number;
-	};
-	type ProgressRow = {
-		label: string;
-		value: number;
-		className?: string;
 	};
 	type DraftField<T> = {
 		field: T;
@@ -119,12 +115,6 @@
 		{ field: 'wordRoundCount', icon: Repeat2, label: '轮背' },
 		{ field: 'manualBonus', icon: BadgePlus, label: '附加' }
 	];
-	const weeklyTargetFields: DraftField<WeeklyNumericDraftField>[] = [
-		{ field: 'studyMinutesTarget', icon: BookOpen, label: '学习分钟' },
-		{ field: 'wordCountTarget', icon: Brain, label: '单词数' },
-		{ field: 'gameMinutesBudget', icon: Gamepad2, label: '游戏预算', tone: 'red' }
-	];
-
 	let records = $state<StudyRecord[]>([]);
 	let weeklyRecords = $state<WeeklyRecord[]>([]);
 	let draft = $state<StudyRecordDraft>(createDraft());
@@ -203,38 +193,14 @@
 	let weekRows = $derived(
 		ledger.filter((row) => row.record.date >= weekKey && row.record.date < addDays(weekKey, 7))
 	);
-	let weekStudyMinutes = $derived(
-		weekRows.reduce((sum, row) => sum + row.record.calculusMinutes + row.record.courseMinutes, 0)
-	);
-	let weekWords = $derived(weekRows.reduce((sum, row) => sum + row.record.wordCount, 0));
 	let weekGameMinutes = $derived(weekRows.reduce((sum, row) => sum + row.record.gameMinutes, 0));
 	let weekExchangeableMinutes = $derived(
 		weekRows.reduce((sum, row) => sum + row.score.exchangeableMinutes, 0)
 	);
-	let weekNetMinutes = $derived(weekExchangeableMinutes - weekGameMinutes);
-	let weekStudyProgress = $derived(
-		cleanedWeeklyDraft.studyMinutesTarget
-			? Math.min(100, Math.round((weekStudyMinutes / cleanedWeeklyDraft.studyMinutesTarget) * 100))
-			: 0
+	let weekRecommendedDays = $derived(
+		weekRows.filter((row) => isRecommendedTargetComplete(toDraft(row.record))).length
 	);
-	let weekWordProgress = $derived(
-		cleanedWeeklyDraft.wordCountTarget
-			? Math.min(100, Math.round((weekWords / cleanedWeeklyDraft.wordCountTarget) * 100))
-			: 0
-	);
-	let weekGameProgress = $derived(
-		cleanedWeeklyDraft.gameMinutesBudget
-			? Math.min(100, Math.round((weekGameMinutes / cleanedWeeklyDraft.gameMinutesBudget) * 100))
-			: 0
-	);
-	let weeklyProgressRows = $derived<ProgressRow[]>([
-		{ label: '学习计划', value: weekStudyProgress },
-		{ label: '单词计划', value: weekWordProgress, className: 'adventure-week-fill-gold' },
-		{ label: '游戏预算', value: weekGameProgress, className: 'adventure-week-fill-red' }
-	]);
 	let weeklySummaryStats = $derived<StatCard[]>([
-		{ icon: BookOpen, label: '学习', value: formatMinutes(weekStudyMinutes) },
-		{ icon: Brain, label: '单词', value: weekWords },
 		{ icon: Coins, label: '可兑换', value: `+${weekExchangeableMinutes}` },
 		{
 			icon: Gamepad2,
@@ -242,6 +208,13 @@
 			value: `-${weekGameMinutes}`,
 			tone: 'red',
 			valueClass: 'text-[oklch(0.42_0.1_42)]'
+		},
+		{
+			icon: CalendarCheck,
+			label: '推荐量完成',
+			value: cleanedWeeklyDraft.recommendedDaysTarget
+				? `${weekRecommendedDays}/${cleanedWeeklyDraft.recommendedDaysTarget}天`
+				: `${weekRecommendedDays}天`
 		}
 	]);
 	let inventoryRows = $derived<InventoryRow[]>([
@@ -603,20 +576,6 @@
 	</span>
 {/snippet}
 
-{#snippet progressRow(row: ProgressRow)}
-	<div>
-		<div class="mb-1 flex justify-between text-xs font-semibold text-[oklch(0.45_0.035_75)]">
-			<span>{row.label}</span><span class="ink-numbers">{row.value}%</span>
-		</div>
-		<div class="h-2 overflow-hidden rounded-full bg-[oklch(0.88_0.03_86)]">
-			<div
-				class={['adventure-week-fill h-full rounded-full', row.className ?? '']}
-				style={`width: ${row.value}%;`}
-			></div>
-		</div>
-	</div>
-{/snippet}
-
 {#snippet numericField(field: DraftField<NumericDraftField>)}
 	<label class="grid gap-1 text-sm font-semibold">
 		{@render iconText(field.icon, field.label)}
@@ -637,6 +596,7 @@
 			class={['ledger-input text-right', field.tone === 'red' ? 'ledger-input-red' : '']}
 			type="number"
 			min="0"
+			max="7"
 			value={numberInputValue(weeklyDraft[field.field])}
 			oninput={(event) => setWeeklyDraftNumber(field.field, event)}
 		/>
@@ -1111,11 +1071,11 @@
 								</span>
 							</div>
 
-							<div class="grid grid-cols-3 gap-3">
-								{#each weeklyTargetFields as field (field.field)}
-									{@render weeklyNumericField(field)}
-								{/each}
-							</div>
+							{@render weeklyNumericField({
+								field: 'recommendedDaysTarget',
+								icon: CalendarCheck,
+								label: '预计推荐量完成天数'
+							})}
 
 							<label class="mt-3 grid gap-1 text-sm font-semibold">
 								{@render iconText(ScrollText, '计划备注')}
@@ -1132,26 +1092,15 @@
 									周复盘
 								</p>
 								<span
-									class={[
-										'ink-numbers rounded-full px-2.5 py-1 text-xs font-semibold',
-										weekNetMinutes < 0
-											? 'bg-[oklch(0.96_0.035_42)] text-[oklch(0.42_0.1_42)]'
-											: 'bg-[oklch(0.91_0.05_146)] text-[oklch(0.36_0.1_145)]'
-									]}
+									class="ink-numbers rounded-full bg-[oklch(0.91_0.05_146)] px-2.5 py-1 text-xs font-semibold text-[oklch(0.36_0.1_145)]"
 								>
-									净 {weekNetMinutes >= 0 ? '+' : ''}{weekNetMinutes}分
+									{weekRecommendedDays}/7 天
 								</span>
 							</div>
 
-							<div class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+							<div class="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
 								{#each weeklySummaryStats as stat (stat.label)}
 									{@render compactStatCard(stat)}
-								{/each}
-							</div>
-
-							<div class="mt-3 grid gap-2">
-								{#each weeklyProgressRows as row (row.label)}
-									{@render progressRow(row)}
 								{/each}
 							</div>
 
