@@ -7,8 +7,8 @@
 		BookOpen,
 		Brain,
 		Calculator,
-		CalendarDays,
 		CalendarCheck,
+		CalendarDays,
 		ClipboardList,
 		Clock3,
 		Coins,
@@ -44,6 +44,7 @@
 		saveRemoteWeeklyRecord
 	} from '$lib/study/api';
 	import { buildCalendarDays } from '$lib/study/calendar';
+	import type { CalendarDay } from '$lib/study/calendar';
 	import { exportJson, exportXlsx, readBackupFile } from '$lib/study/export';
 	import { localDb } from '$lib/study/local-db';
 	import {
@@ -86,24 +87,27 @@
 		| 'gameMinutes';
 	type WeeklyNumericDraftField = 'recommendedDaysTarget';
 	type IconComponent = typeof Coins;
-	type Tone = 'default' | 'red';
-	type StatCard = {
+	type Tone = 'mint' | 'amber' | 'coral';
+	type Metric = {
 		icon: IconComponent;
 		label: string;
 		value: string | number;
 		tone?: Tone;
-		valueClass?: string;
-	};
-	type InventoryRow = {
-		icon: IconComponent;
-		label: string;
-		value: string | number;
 	};
 	type DraftField<T> = {
 		field: T;
 		icon: IconComponent;
 		label: string;
 		tone?: Tone;
+	};
+	type MoodName = 'blank' | 'sleep' | 'work' | 'clear' | 'cap' | 'danger';
+	type MoodCard = {
+		icon: IconComponent;
+		label: string;
+		value: string;
+		detail: string;
+		tone: Tone;
+		mood: MoodName;
 	};
 
 	const studyMinuteFields: DraftField<NumericDraftField>[] = [
@@ -115,6 +119,8 @@
 		{ field: 'wordRoundCount', icon: Repeat2, label: '轮背' },
 		{ field: 'manualBonus', icon: BadgePlus, label: '附加' }
 	];
+	const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+
 	let records = $state<StudyRecord[]>([]);
 	let weeklyRecords = $state<WeeklyRecord[]>([]);
 	let draft = $state<StudyRecordDraft>(createDraft());
@@ -141,8 +147,72 @@
 	let monthKey = $derived(getMonthKey(cleanedDraft.date));
 	let monthRows = $derived(ledger.filter((row) => row.record.date.startsWith(monthKey)));
 	let monthPoints = $derived(monthRows.reduce((sum, row) => sum + row.score.totalPoints, 0));
+	let monthExchangeableMinutes = $derived(
+		monthRows.reduce((sum, row) => sum + row.score.exchangeableMinutes, 0)
+	);
 	let monthGameMinutes = $derived(monthRows.reduce((sum, row) => sum + row.record.gameMinutes, 0));
+	let monthNetMinutes = $derived(monthExchangeableMinutes - monthGameMinutes);
+	let monthStudyMinutes = $derived(
+		monthRows.reduce((sum, row) => sum + row.record.calculusMinutes + row.record.courseMinutes, 0)
+	);
+	let monthCalculusMinutes = $derived(
+		monthRows.reduce((sum, row) => sum + row.record.calculusMinutes, 0)
+	);
+	let monthCourseMinutes = $derived(
+		monthRows.reduce((sum, row) => sum + row.record.courseMinutes, 0)
+	);
+	let monthWords = $derived(monthRows.reduce((sum, row) => sum + row.record.wordCount, 0));
+	let monthCompletedDays = $derived(
+		monthRows.filter((row) => isRecommendedTargetComplete(toDraft(row.record))).length
+	);
+	let monthOverdrawDays = $derived(
+		monthRows.filter((row) => row.record.gameMinutes > row.score.exchangeableMinutes).length
+	);
 	let calendarDays = $derived(buildCalendarDays(ledger, monthKey));
+	let reportDays = $derived(calendarDays.filter((day) => day.inMonth));
+	let dailyBarMax = $derived(
+		Math.max(1, ...reportDays.map((day) => Math.max(day.exchangeableMinutes, day.gameMinutes)))
+	);
+	let trendSeries = $derived(
+		(() => {
+			let exchange = 0;
+			let game = 0;
+			let balance = 0;
+			return reportDays.map((day) => {
+				exchange += day.exchangeableMinutes;
+				game += day.gameMinutes;
+				balance += day.netMinutes;
+				return { date: day.date, exchange, game, balance };
+			});
+		})()
+	);
+	let trendMin = $derived(
+		Math.min(0, ...trendSeries.flatMap((point) => [point.exchange, point.game, point.balance]))
+	);
+	let trendMax = $derived(
+		Math.max(1, ...trendSeries.flatMap((point) => [point.exchange, point.game, point.balance]))
+	);
+	let exchangeLinePoints = $derived(
+		chartPoints(
+			trendSeries.map((point) => point.exchange),
+			trendMin,
+			trendMax
+		)
+	);
+	let gameLinePoints = $derived(
+		chartPoints(
+			trendSeries.map((point) => point.game),
+			trendMin,
+			trendMax
+		)
+	);
+	let balanceLinePoints = $derived(
+		chartPoints(
+			trendSeries.map((point) => point.balance),
+			trendMin,
+			trendMax
+		)
+	);
 	let weekKey = $derived(getWeekKey(cleanedDraft.date));
 	let cleanedWeeklyDraft = $derived(normalizeWeeklyDraft(weeklyDraft));
 	let currentStreak = $derived(getCurrentStreak(records));
@@ -150,8 +220,6 @@
 	let weeklyPendingCount = $derived(
 		weeklyRecords.filter((record) => record.syncState === 'pending').length
 	);
-	let meterRotation = $derived(Math.min(220, Math.max(0, previewScore.totalPoints)) - 110);
-	let previewNetMinutes = $derived(previewScore.exchangeableMinutes - cleanedDraft.gameMinutes);
 	let targetProgress = $derived(getTargetProgress(cleanedDraft));
 	let targetProgressPercent = $derived(Math.round(targetProgress.totalProgress * 100));
 	let studyProgressPercent = $derived(Math.round(targetProgress.studyProgress * 100));
@@ -161,34 +229,72 @@
 	let levelProgressPercent = $derived(
 		Math.min(100, Math.round(((monthPoints - levelBasePoints) / 500) * 100))
 	);
+	let previewNetMinutes = $derived(previewScore.exchangeableMinutes - cleanedDraft.gameMinutes);
 	let bossHpPercent = $derived(Math.max(0, 100 - targetProgressPercent));
 	let adventureRank = $derived(
 		targetProgressPercent >= 100 ? '通关' : targetProgressPercent >= 50 ? '破防' : '开战'
 	);
 	let accountMood = $derived(currentBalance >= 0 ? '可出征' : '冷却中');
-	let netValueClass = $derived(
-		previewNetMinutes < 0 ? 'text-[oklch(0.42_0.1_42)]' : 'text-[oklch(0.36_0.1_145)]'
+	let monthTitle = $derived(formatMonthTitle(monthKey));
+	let monthStudyHours = $derived(Math.round(monthStudyMinutes / 60));
+	let timeDonutStyle = $derived(
+		buildTimeDonut(monthCalculusMinutes, monthCourseMinutes, monthGameMinutes)
 	);
-	let dashboardStats = $derived<StatCard[]>([
-		{ icon: Coins, label: '可兑换', value: `${previewScore.exchangeableMinutes}分` },
+	let monthCompletionRate = $derived(
+		monthRows.length ? Math.round((monthCompletedDays / monthRows.length) * 100) : 0
+	);
+	let reportMetrics = $derived<Metric[]>([
+		{ icon: Coins, label: '本月可兑换', value: `+${monthExchangeableMinutes}` },
+		{ icon: Gamepad2, label: '本月游戏', value: `-${monthGameMinutes}`, tone: 'coral' },
+		{
+			icon: Archive,
+			label: '净结转',
+			value: signedNumber(monthNetMinutes),
+			tone: monthNetMinutes < 0 ? 'coral' : 'mint'
+		},
+		{ icon: CalendarCheck, label: '推荐量完成', value: `${monthCompletedDays}天` }
+	]);
+	let moodCards = $derived<MoodCard[]>([
+		{
+			icon: Trophy,
+			label: '通关',
+			value: `${monthCompletedDays} 天`,
+			detail: `完成率 ${monthCompletionRate}%`,
+			tone: 'mint',
+			mood: 'clear'
+		},
+		{
+			icon: Flame,
+			label: '连续',
+			value: `${currentStreak} 天`,
+			detail: `等级 LVL ${adventureLevel}`,
+			tone: 'amber',
+			mood: currentStreak > 0 ? 'cap' : 'sleep'
+		},
 		{
 			icon: Gamepad2,
-			label: '实际游戏',
-			value: `-${cleanedDraft.gameMinutes}分`,
-			tone: 'red',
-			valueClass: 'text-[oklch(0.42_0.1_42)]'
-		},
+			label: '透支',
+			value: `${monthOverdrawDays} 天`,
+			detail: currentBalance >= 0 ? '账户安全' : '账户冷却',
+			tone: 'coral',
+			mood: monthOverdrawDays > 0 ? 'danger' : 'work'
+		}
+	]);
+	let dashboardStats = $derived<Metric[]>([
+		{ icon: Coins, label: '可兑换', value: `${previewScore.exchangeableMinutes}分` },
+		{ icon: Gamepad2, label: '实际游戏', value: `-${cleanedDraft.gameMinutes}分`, tone: 'coral' },
 		{
 			icon: Sparkles,
 			label: '净变化',
 			value: `${previewNetMinutes >= 0 ? '+' : ''}${previewNetMinutes}分`,
-			valueClass: netValueClass
+			tone: previewNetMinutes < 0 ? 'coral' : 'mint'
 		},
-		{ icon: Archive, label: '结转', value: currentBalance },
-		{ icon: Trophy, label: '本月积分', value: monthPoints },
-		{ icon: Clock3, label: '本月游戏', value: monthGameMinutes },
-		{ icon: Flame, label: '连续', value: `${currentStreak}天` },
-		{ icon: Cloud, label: '待同步', value: pendingCount + weeklyPendingCount }
+		{
+			icon: Target,
+			label: '推荐量',
+			value: `${targetProgressPercent}%`,
+			tone: targetProgressPercent >= 100 ? 'mint' : 'amber'
+		}
 	]);
 	let weekRows = $derived(
 		ledger.filter((row) => row.record.date >= weekKey && row.record.date < addDays(weekKey, 7))
@@ -200,15 +306,9 @@
 	let weekRecommendedDays = $derived(
 		weekRows.filter((row) => isRecommendedTargetComplete(toDraft(row.record))).length
 	);
-	let weeklySummaryStats = $derived<StatCard[]>([
+	let weeklySummaryStats = $derived<Metric[]>([
 		{ icon: Coins, label: '可兑换', value: `+${weekExchangeableMinutes}` },
-		{
-			icon: Gamepad2,
-			label: '游戏',
-			value: `-${weekGameMinutes}`,
-			tone: 'red',
-			valueClass: 'text-[oklch(0.42_0.1_42)]'
-		},
+		{ icon: Gamepad2, label: '游戏', value: `-${weekGameMinutes}`, tone: 'coral' },
 		{
 			icon: CalendarCheck,
 			label: '推荐量完成',
@@ -217,10 +317,13 @@
 				: `${weekRecommendedDays}天`
 		}
 	]);
-	let inventoryRows = $derived<InventoryRow[]>([
+	let inventoryRows = $derived<Metric[]>([
 		{ icon: Server, label: '主库', value: passcode ? 'Cloudflare D1' : '未连接' },
 		{ icon: HardDrive, label: '本地缓存', value: 'IndexedDB' },
-		{ icon: Archive, label: '记录数', value: records.length }
+		{ icon: Archive, label: '记录数', value: records.length },
+		{ icon: Cloud, label: '待同步', value: pendingCount + weeklyPendingCount },
+		{ icon: Clock3, label: '累计学习', value: formatMinutes(totalStudyMinutes) },
+		{ icon: Brain, label: '累计单词', value: totalWords }
 	]);
 
 	onMount(async () => {
@@ -521,66 +624,118 @@
 	function formatWeekRange(weekStart: string) {
 		return `${weekStart} 至 ${addDays(weekStart, 6)}`;
 	}
+
+	function formatMonthTitle(monthKey: string) {
+		const [year, month] = monthKey.split('-');
+		return `${year} 年 ${Number(month)} 月`;
+	}
+
+	function shortDate(date: string) {
+		const [, month, day] = date.split('-');
+		return `${Number(month)}/${Number(day)}`;
+	}
+
+	function signedNumber(value: number) {
+		return `${value >= 0 ? '+' : ''}${value}`;
+	}
+
+	function barHeight(value: number, max: number) {
+		return `${Math.max(3, Math.round((value / max) * 100))}%`;
+	}
+
+	function dayMood(day: CalendarDay): MoodName {
+		if (!day.inMonth) return 'blank';
+		if (!day.hasRecord) return 'sleep';
+		if (day.gameMinutes > day.exchangeableMinutes) return 'danger';
+		if (day.exchangeableMinutes >= 220) return 'cap';
+		if (day.exchangeableMinutes > 0) return 'clear';
+		return 'work';
+	}
+
+	function dayMoodLabel(day: CalendarDay) {
+		if (!day.inMonth) return '';
+		if (!day.hasRecord) return `${day.date} 未记录`;
+		if (day.gameMinutes > day.exchangeableMinutes) return `${day.date} 游戏超支`;
+		if (day.exchangeableMinutes >= 220) return `${day.date} 满额通关`;
+		if (day.exchangeableMinutes > 0) return `${day.date} 已获得 ${day.exchangeableMinutes} 分`;
+		return `${day.date} 记录中`;
+	}
+
+	function chartPoints(values: number[], min: number, max: number, width = 300, height = 170) {
+		const span = max - min || 1;
+		const lastIndex = Math.max(values.length - 1, 1);
+		return values
+			.map((value, index) => {
+				const x = (index / lastIndex) * width;
+				const y = height - ((value - min) / span) * height;
+				return `${x.toFixed(1)},${y.toFixed(1)}`;
+			})
+			.join(' ');
+	}
+
+	function buildTimeDonut(calculusMinutes: number, courseMinutes: number, gameMinutes: number) {
+		const total = Math.max(1, calculusMinutes + courseMinutes + gameMinutes);
+		const calculusDeg = (calculusMinutes / total) * 360;
+		const courseDeg = calculusDeg + (courseMinutes / total) * 360;
+		return `background: conic-gradient(
+			oklch(0.72 0.13 166) 0deg ${calculusDeg}deg,
+			oklch(0.79 0.15 84) ${calculusDeg}deg ${courseDeg}deg,
+			oklch(0.68 0.17 38) ${courseDeg}deg 360deg
+		);`;
+	}
 </script>
 
 <svelte:head>
-	<title>Hakuba 学习账本</title>
+	<title>Hakuba 学习冒险月报</title>
 	<meta
 		name="description"
 		content="个人学习积分账本，使用 Cloudflare D1 持久化保存，支持本地缓存和 Excel 导出。"
 	/>
 </svelte:head>
 
-{#snippet iconText(Icon: IconComponent, label: string, size = 15)}
-	<span class="flex items-center gap-1.5">
-		<Icon {size} />
-		{label}
+{#snippet moodFace(mood: MoodName, label = '')}
+	<span class={['mood-face', `mood-${mood}`]} aria-label={label} title={label}>
+		<i></i>
 	</span>
 {/snippet}
 
-{#snippet statCard(stat: StatCard)}
-	{@const Icon = stat.icon}
-	<div
-		class={['adventure-stat rounded-[6px] p-3', stat.tone === 'red' ? 'adventure-stat-red' : '']}
-	>
-		<p class={['adventure-stat-label', stat.tone === 'red' ? 'adventure-stat-label-red' : '']}>
-			<Icon size={14} />
-			{stat.label}
+{#snippet reportMetric(metric: Metric)}
+	{@const Icon = metric.icon}
+	<div class={['report-metric', metric.tone ? `tone-${metric.tone}` : '']}>
+		<p>
+			<Icon size={15} />
+			{metric.label}
 		</p>
-		<p class={['ink-numbers mt-1 text-2xl font-semibold', stat.valueClass ?? '']}>
-			{stat.value}
-		</p>
+		<strong class="ink-numbers">{metric.value}</strong>
 	</div>
 {/snippet}
 
-{#snippet compactStatCard(stat: StatCard)}
-	{@const Icon = stat.icon}
-	<div
-		class={[
-			'rounded-[6px] bg-[oklch(0.99_0.006_92/0.72)] p-2.5',
-			stat.tone === 'red' ? 'bg-[oklch(0.985_0.018_45/0.76)]' : ''
-		]}
-	>
-		<p class={['adventure-stat-label', stat.tone === 'red' ? 'adventure-stat-label-red' : '']}>
-			<Icon size={14} />
-			{stat.label}
-		</p>
-		<p class={['ink-numbers mt-1 font-semibold', stat.valueClass ?? '']}>{stat.value}</p>
+{#snippet moodCard(card: MoodCard)}
+	{@const Icon = card.icon}
+	<div class={['mood-card', `tone-${card.tone}`]}>
+		<div class="mood-card-head">
+			<div>
+				<p>
+					<Icon size={16} />
+					{card.label}
+				</p>
+				<strong class="ink-numbers">{card.value}</strong>
+				<span>{card.detail}</span>
+			</div>
+			{@render moodFace(card.mood, card.label)}
+		</div>
 	</div>
 {/snippet}
 
-{#snippet tableHeading(Icon: IconComponent, label: string, align: 'left' | 'right' = 'left')}
-	<span class={['adventure-table-heading', align === 'right' ? 'justify-end' : '']}>
-		<Icon size={13} />
-		{label}
-	</span>
-{/snippet}
-
-{#snippet numericField(field: DraftField<NumericDraftField>)}
-	<label class="grid gap-1 text-sm font-semibold">
-		{@render iconText(field.icon, field.label)}
+{#snippet numberField(field: DraftField<NumericDraftField>)}
+	{@const Icon = field.icon}
+	<label class="battle-field">
+		<span>
+			<Icon size={15} />
+			{field.label}
+		</span>
 		<input
-			class={['ledger-input text-right', field.tone === 'red' ? 'ledger-input-red' : '']}
+			class={['battle-input', field.tone === 'coral' ? 'battle-input-coral' : '']}
 			type="number"
 			min="0"
 			value={numberInputValue(draft[field.field])}
@@ -589,11 +744,15 @@
 	</label>
 {/snippet}
 
-{#snippet weeklyNumericField(field: DraftField<WeeklyNumericDraftField>)}
-	<label class="grid gap-1 text-sm font-semibold">
-		{@render iconText(field.icon, field.label)}
+{#snippet weeklyNumberField(field: DraftField<WeeklyNumericDraftField>)}
+	{@const Icon = field.icon}
+	<label class="battle-field">
+		<span>
+			<Icon size={15} />
+			{field.label}
+		</span>
 		<input
-			class={['ledger-input text-right', field.tone === 'red' ? 'ledger-input-red' : '']}
+			class="battle-input"
 			type="number"
 			min="0"
 			max="7"
@@ -603,252 +762,298 @@
 	</label>
 {/snippet}
 
-<main id="main-content" class="min-h-screen px-4 py-5 text-[oklch(0.23_0.03_75)] sm:px-6 lg:px-8">
-	<div class="mx-auto max-w-7xl">
-		<header class="mb-5 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-			<div>
-				<p class="mb-1 flex items-center gap-2 text-sm font-semibold text-[oklch(0.43_0.07_145)]">
-					<NotebookPen size={18} strokeWidth={1.8} />
-					Hakuba adventure ledger
-				</p>
-				<h1
-					class="max-w-3xl text-4xl font-semibold tracking-[-0.022em] text-[oklch(0.21_0.036_74)] sm:text-5xl"
-				>
-					学习冒险计划本
-				</h1>
-				<div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-					<span class="adventure-chip adventure-chip-green">
-						<Trophy size={14} />
-						Lv.{adventureLevel}
-					</span>
-					<span class="adventure-chip adventure-chip-gold">
-						<Flame size={14} />
-						连续 {currentStreak}天
-					</span>
-					<span
-						class={[
-							'adventure-chip',
-							currentBalance >= 0 ? 'adventure-chip-green' : 'adventure-chip-red'
-						]}
-					>
-						<Gamepad2 size={14} />
-						{accountMood}
-					</span>
+<main id="main-content" class="report-shell">
+	<div class="report-grid">
+		<section class="month-report" aria-label="月度冒险报告">
+			<header class="report-hero">
+				<div>
+					<p class="brand-line">
+						<NotebookPen size={18} />
+						Hakuba adventure report
+					</p>
+					<h1>学习冒险月报</h1>
+					<div class="color-bars" aria-hidden="true">
+						<span></span><span></span><span></span>
+					</div>
+				</div>
+				<div class="level-chip">
+					<Trophy size={16} />
+					LVL {adventureLevel}
+				</div>
+				<p class="month-title">{monthTitle}</p>
+				<div class="level-track" aria-label={`本级经验进度 ${levelProgressPercent}%`}>
+					<span style={`width: ${levelProgressPercent}%;`}></span>
+				</div>
+			</header>
+
+			<section class="report-card calendar-card">
+				<div class="report-section-title">
+					<p>
+						<CalendarDays size={16} />
+						本月状态格
+					</p>
+					<span>{monthCompletedDays} 天通关</span>
+				</div>
+				<div class="weekday-row">
+					{#each weekdays as weekday (weekday)}
+						<span>{weekday}</span>
+					{/each}
+				</div>
+				<div class="mood-calendar">
+					{#each calendarDays as day (day.date)}
+						<button
+							class={[
+								'mood-day',
+								day.inMonth ? '' : 'is-outside',
+								day.date === cleanedDraft.date ? 'is-selected' : '',
+								day.date === highlightedDate ? 'saved-day-pulse' : ''
+							]}
+							type="button"
+							disabled={!day.inMonth}
+							aria-label={dayMoodLabel(day)}
+							onclick={() => selectDate(day.date)}
+						>
+							{@render moodFace(dayMood(day), dayMoodLabel(day))}
+							<span class="ink-numbers">{day.day}</span>
+						</button>
+					{/each}
+				</div>
+			</section>
+
+			<div class="report-strip">
+				<Flame size={16} />
+				累计签到 {records.length} 日，连续签到 {currentStreak} 日
+			</div>
+			<div class="report-strip">
+				<Target size={16} />
+				本月获得 {monthCompletedDays} 次推荐量完成，累计单词 {monthWords}
+			</div>
+
+			<section class="report-card">
+				<div class="report-section-title">
+					<p>
+						<Coins size={16} />
+						每日兑换与游戏
+					</p>
+					<span class="ink-numbers">MAX {dailyBarMax}</span>
+				</div>
+				<div class="daily-bars" style={`--days: ${reportDays.length};`}>
+					{#each reportDays as day (day.date)}
+						<div
+							class="bar-column"
+							title={`${shortDate(day.date)} +${day.exchangeableMinutes} -${day.gameMinutes}`}
+						>
+							<div class="bar-track">
+								<span
+									class="bar-fill bar-earned"
+									style={`height: ${barHeight(day.exchangeableMinutes, dailyBarMax)};`}
+								></span>
+								<span
+									class="bar-fill bar-game"
+									style={`height: ${barHeight(day.gameMinutes, dailyBarMax)};`}
+								></span>
+							</div>
+							<span class="ink-numbers">
+								{day.day === 1 || day.day % 5 === 0 || day.day === reportDays.length ? day.day : ''}
+							</span>
+						</div>
+					{/each}
+				</div>
+				<div class="chart-legend">
+					<span><i class="legend-earned"></i>可兑换</span>
+					<span><i class="legend-game"></i>实际游戏</span>
+				</div>
+			</section>
+
+			{#each reportMetrics as metric (metric.label)}
+				{@const Icon = metric.icon}
+				<div class="report-strip metric-strip">
+					<Icon size={16} />
+					{metric.label} <strong class="ink-numbers">{metric.value}</strong>
+				</div>
+			{/each}
+
+			<section class="report-card">
+				<div class="report-section-title">
+					<p>
+						<Gauge size={16} />
+						累计趋势
+					</p>
+					<span>{monthRows.length} 条记录</span>
+				</div>
+				<svg class="trend-chart" viewBox="0 0 300 190" role="img" aria-label="本月累计趋势">
+					<line x1="0" y1="170" x2="300" y2="170"></line>
+					<line x1="0" y1="113" x2="300" y2="113"></line>
+					<line x1="0" y1="56" x2="300" y2="56"></line>
+					<polyline class="line-earned" points={exchangeLinePoints}></polyline>
+					<polyline class="line-game" points={gameLinePoints}></polyline>
+					<polyline class="line-balance" points={balanceLinePoints}></polyline>
+				</svg>
+				<div class="chart-legend stacked">
+					<span><i class="legend-earned"></i>累计可兑换 {monthExchangeableMinutes}</span>
+					<span><i class="legend-game"></i>累计游戏 {monthGameMinutes}</span>
+					<span><i class="legend-balance"></i>累计结转 {monthNetMinutes}</span>
+				</div>
+			</section>
+
+			<div class="mood-card-grid">
+				{#each moodCards as card (card.label)}
+					{@render moodCard(card)}
+				{/each}
+			</div>
+
+			<section class="report-card donut-card">
+				<div class="time-donut" style={timeDonutStyle}>
+					<span></span>
+				</div>
+				<div class="donut-legend">
+					<p><i class="legend-earned"></i>高数 {formatMinutes(monthCalculusMinutes)}</p>
+					<p><i class="legend-amber"></i>专业 {formatMinutes(monthCourseMinutes)}</p>
+					<p><i class="legend-game"></i>游戏 {formatMinutes(monthGameMinutes)}</p>
+				</div>
+			</section>
+
+			<div class="report-strip">
+				<Clock3 size={16} />
+				本月学习时长 {formatMinutes(monthStudyMinutes)}，约 {monthStudyHours} 小时
+			</div>
+
+			<footer class="report-mascot" aria-hidden="true">
+				<div class="heart-card"><span></span></div>
+				<div class="mascot-body">
+					<span class="mascot-eye"></span>
+					<span class="mascot-mark"></span>
+				</div>
+			</footer>
+		</section>
+
+		<section class="battle-console" aria-label="学习账本操作区">
+			<div class="console-head">
+				<div>
+					<p class="brand-line">
+						<Swords size={18} />
+						Today battle
+					</p>
+					<h2>今日结算台</h2>
+				</div>
+				<div class={['account-pill', currentBalance >= 0 ? 'is-safe' : 'is-cooldown']}>
+					<Gamepad2 size={16} />
+					{accountMood}
+					{currentBalance}分
 				</div>
 			</div>
 
-			<div class="paper-sheet rounded-[8px] px-4 py-3">
-				<div class="flex flex-wrap items-end gap-2">
-					<label class="grid gap-1 text-xs font-semibold text-[oklch(0.42_0.028_75)]">
+			<section class="sync-card">
+				<label>
+					<span>
+						<Cloud size={15} />
 						D1 口令
-						<input
-							class="h-10 w-44 rounded-[6px] border-0 bg-[oklch(0.99_0.006_92)] px-3 text-sm shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.5)] focus:shadow-[inset_0_0_0_2px_oklch(0.52_0.12_145)] focus:outline-none"
-							type="password"
-							autocomplete="current-password"
-							bind:value={passcode}
-						/>
-					</label>
-					<button
-						class="inline-flex h-10 items-center gap-2 rounded-[6px] bg-[oklch(0.23_0.03_75)] px-3 text-sm font-semibold text-[oklch(0.98_0.012_92)] shadow-[0_2px_4px_oklch(0.24_0.03_75/0.18)] transition-transform duration-150 active:scale-[0.96] disabled:opacity-55"
-						type="button"
-						disabled={isSyncing}
-						onclick={syncRecords}
-					>
-						<RefreshCw size={16} class={isSyncing ? 'animate-spin' : ''} />
-						同步
-					</button>
-				</div>
-				<p class="mt-2 flex items-center gap-2 text-xs text-[oklch(0.42_0.028_75)]">
+					</span>
+					<input
+						class="battle-input"
+						type="password"
+						autocomplete="current-password"
+						bind:value={passcode}
+					/>
+				</label>
+				<button class="primary-button" type="button" disabled={isSyncing} onclick={syncRecords}>
+					<RefreshCw size={17} class={isSyncing ? 'animate-spin' : ''} />
+					同步
+				</button>
+				<p>
 					{#if passcode}
 						<Cloud size={14} /> {statusText}
 					{:else}
 						<Database size={14} /> 本地账本
 					{/if}
 				</p>
-			</div>
-		</header>
+			</section>
 
-		<section class="adventure-board mb-5 rounded-[8px] p-4">
-			<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-center">
-				<div>
-					<div class="mb-2 flex items-center justify-between gap-3">
-						<p class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.27_0.07_145)]">
-							<Swords size={18} />
-							本月冒险经验
-						</p>
-						<p class="ink-numbers text-sm font-semibold text-[oklch(0.35_0.09_145)]">
-							{monthPoints - levelBasePoints}/500 XP
-						</p>
-					</div>
-					<div
-						class="relative h-7 overflow-hidden rounded-[7px] bg-[oklch(0.86_0.035_86)] shadow-[inset_0_2px_3px_oklch(0.3_0.035_75/0.18)]"
-					>
-						<div
-							class="adventure-xp-fill absolute inset-y-0 left-0 rounded-[7px]"
-							style={`width: ${levelProgressPercent}%;`}
-						></div>
-						<div class="absolute inset-0 grid grid-cols-5">
-							<span class="border-r border-[oklch(0.26_0.04_75/0.16)]"></span>
-							<span class="border-r border-[oklch(0.26_0.04_75/0.16)]"></span>
-							<span class="border-r border-[oklch(0.26_0.04_75/0.16)]"></span>
-							<span class="border-r border-[oklch(0.26_0.04_75/0.16)]"></span>
-							<span></span>
-						</div>
-					</div>
-				</div>
-				<div class="grid grid-cols-2 gap-2 text-sm">
-					<div class="adventure-stamp">
-						<span><Target size={13} /> 今日战况</span>
-						<strong>{adventureRank}</strong>
-					</div>
-					<div class="adventure-stamp adventure-stamp-gold">
-						<span><Gamepad2 size={13} /> 游戏账户</span>
-						<strong>{currentBalance}分</strong>
-					</div>
-				</div>
-			</div>
-		</section>
+			{#if errorText}
+				<p class="error-banner">{errorText}</p>
+			{/if}
 
-		{#if errorText}
-			<p
-				class="mb-4 rounded-[6px] bg-[oklch(0.96_0.045_32)] px-3 py-2 text-sm font-medium text-[oklch(0.38_0.11_32)]"
-			>
-				{errorText}
-			</p>
-		{/if}
-
-		<section class="grid gap-5 lg:grid-cols-[380px_1fr]">
-			<form class="paper-sheet rounded-[8px] p-5" onsubmit={(event) => event.preventDefault()}>
-				<div class="mb-5 flex items-center justify-between gap-3">
-					<div>
-						<p
-							class="text-xs font-semibold tracking-[0.12em] text-[oklch(0.48_0.032_75)] uppercase"
-						>
-							Daily entry
-						</p>
-						<h2 class="mt-1 text-2xl font-semibold tracking-[-0.012em]">今日页</h2>
-					</div>
-					<div
-						class="rounded-full bg-[oklch(0.91_0.05_146)] px-3 py-1 text-sm font-semibold text-[oklch(0.36_0.1_145)]"
-					>
-						+{previewScore.totalPoints}
-					</div>
+			<form class="console-panel" onsubmit={(event) => event.preventDefault()}>
+				<div class="panel-title">
+					<p>
+						<ClipboardList size={17} />
+						每日记录
+					</p>
+					<span class="score-bubble">+{previewScore.totalPoints}</span>
 				</div>
 
-				<div class="grid gap-4">
-					<label class="grid gap-1 text-sm font-semibold">
-						{@render iconText(CalendarCheck, '日期')}
+				<label class="battle-field">
+					<span>
+						<CalendarCheck size={15} />
+						日期
+					</span>
+					<input
+						class="battle-input"
+						type="date"
+						value={draft.date}
+						onchange={(event) => selectDate((event.currentTarget as HTMLInputElement).value)}
+					/>
+				</label>
+
+				<div class="target-toggle" aria-label="推荐量规则">
+					<label class={cleanedDraft.targetLevel === 1 ? 'is-active' : ''}>
 						<input
-							class="ledger-input"
-							type="date"
-							value={draft.date}
-							onchange={(event) => selectDate((event.currentTarget as HTMLInputElement).value)}
+							class="sr-only"
+							type="radio"
+							name="target-level"
+							checked={cleanedDraft.targetLevel === 1}
+							onchange={() => setTargetLevel(1)}
 						/>
+						工作日
 					</label>
-
-					<section
-						class="rounded-[8px] bg-[oklch(0.965_0.018_92/0.76)] p-3 shadow-[inset_0_0_0_1px_oklch(0.74_0.035_74/0.34)]"
-					>
-						<div class="mb-3 flex items-center justify-between gap-3">
-							<p class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.37_0.08_145)]">
-								<Sparkles size={17} />
-								学习收入攻击
-							</p>
-							<div
-								class="grid grid-cols-2 rounded-[6px] bg-[oklch(0.99_0.006_92/0.7)] p-1 text-xs font-semibold shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.38)]"
-							>
-								<label
-									class={[
-										'inline-flex h-8 cursor-pointer items-center justify-center rounded-[5px] px-2 transition-transform duration-150 active:scale-[0.96]',
-										cleanedDraft.targetLevel === 1
-											? 'bg-[oklch(0.38_0.11_145)] text-[oklch(0.98_0.012_92)] shadow-[0_1px_3px_oklch(0.27_0.08_145/0.2)]'
-											: 'text-[oklch(0.42_0.028_75)]'
-									]}
-								>
-									<input
-										class="sr-only"
-										type="radio"
-										name="target-level"
-										checked={cleanedDraft.targetLevel === 1}
-										onchange={() => setTargetLevel(1)}
-									/>
-									工作日副本
-								</label>
-								<label
-									class={[
-										'inline-flex h-8 cursor-pointer items-center justify-center rounded-[5px] px-2 transition-transform duration-150 active:scale-[0.96]',
-										cleanedDraft.targetLevel === 2
-											? 'bg-[oklch(0.42_0.1_42)] text-[oklch(0.99_0.012_92)] shadow-[0_1px_3px_oklch(0.35_0.08_42/0.2)]'
-											: 'text-[oklch(0.42_0.028_75)]'
-									]}
-								>
-									<input
-										class="sr-only"
-										type="radio"
-										name="target-level"
-										checked={cleanedDraft.targetLevel === 2}
-										onchange={() => setTargetLevel(2)}
-									/>
-									周末副本
-								</label>
-							</div>
-						</div>
-
-						<div class="grid gap-3">
-							<div class="grid grid-cols-2 gap-3">
-								{#each studyMinuteFields as field (field.field)}
-									{@render numericField(field)}
-								{/each}
-							</div>
-
-							{@render numericField({ field: 'wordCount', icon: Brain, label: '单词数' })}
-
-							<div class="grid grid-cols-3 gap-3">
-								{#each bonusFields as field (field.field)}
-									{@render numericField(field)}
-								{/each}
-							</div>
-						</div>
-					</section>
-
-					<section
-						class="rounded-[8px] bg-[oklch(0.96_0.026_42/0.58)] p-3 shadow-[inset_0_0_0_1px_oklch(0.74_0.07_42/0.3)]"
-					>
-						<div class="mb-3 flex items-center justify-between gap-3">
-							<p class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.4_0.09_42)]">
-								<Gamepad2 size={17} />
-								游戏支出
-							</p>
-							<span class="ink-numbers text-xs font-semibold text-[oklch(0.42_0.08_42)]">
-								账户 {previewNetMinutes >= 0 ? '+' : ''}{previewNetMinutes}分
-							</span>
-						</div>
-						{@render numericField({
-							field: 'gameMinutes',
-							icon: Clock3,
-							label: '实际游戏',
-							tone: 'red'
-						})}
-					</section>
-
-					<label class="grid gap-1 text-sm font-semibold">
-						{@render iconText(ScrollText, '备注')}
-						<textarea class="ledger-textarea" bind:value={draft.note}></textarea>
+					<label class={cleanedDraft.targetLevel === 2 ? 'is-active is-weekend' : ''}>
+						<input
+							class="sr-only"
+							type="radio"
+							name="target-level"
+							checked={cleanedDraft.targetLevel === 2}
+							onchange={() => setTargetLevel(2)}
+						/>
+						周末
 					</label>
 				</div>
 
-				<div class="mt-5 grid grid-cols-[1fr_auto] gap-3">
-					<button
-						class="inline-flex h-11 items-center justify-center gap-2 rounded-[6px] bg-[oklch(0.38_0.11_145)] px-4 text-sm font-semibold text-[oklch(0.98_0.012_92)] shadow-[0_2px_5px_oklch(0.27_0.08_145/0.22)] transition-transform duration-150 active:scale-[0.96] disabled:opacity-60"
-						type="button"
-						disabled={isSaving}
-						onclick={saveRecord}
-					>
+				<div class="field-grid two">
+					{#each studyMinuteFields as field (field.field)}
+						{@render numberField(field)}
+					{/each}
+				</div>
+
+				{@render numberField({ field: 'wordCount', icon: Brain, label: '单词数' })}
+
+				<div class="field-grid three">
+					{#each bonusFields as field (field.field)}
+						{@render numberField(field)}
+					{/each}
+				</div>
+
+				{@render numberField({
+					field: 'gameMinutes',
+					icon: Gamepad2,
+					label: '实际游戏',
+					tone: 'coral'
+				})}
+
+				<label class="battle-field">
+					<span>
+						<ScrollText size={15} />
+						备注
+					</span>
+					<textarea class="battle-textarea" bind:value={draft.note}></textarea>
+				</label>
+
+				<div class="action-row">
+					<button class="primary-button" type="button" disabled={isSaving} onclick={saveRecord}>
 						<Save size={17} />
 						结算今日
 					</button>
 					<button
-						class="inline-flex h-11 w-11 items-center justify-center rounded-[6px] bg-[oklch(0.96_0.035_32)] text-[oklch(0.43_0.12_32)] shadow-[inset_0_0_0_1px_oklch(0.76_0.08_32/0.45)] transition-transform duration-150 active:scale-[0.96]"
+						class="danger-button"
 						type="button"
 						aria-label="删除当天记录"
 						onclick={deleteSelectedRecord}
@@ -858,477 +1063,165 @@
 				</div>
 			</form>
 
-			<div class="grid gap-5">
-				<section class="paper-sheet rounded-[8px] p-5">
-					<div class="grid gap-5">
-						<div class="quest-progress rounded-[8px] p-3">
-							<div class="mb-2 flex items-center justify-between gap-3">
-								<div>
-									<p
-										class="flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-[oklch(0.37_0.08_145)] uppercase"
-									>
-										<Swords size={15} />
-										今日战斗
-									</p>
-									<p class="mt-1 text-xs font-semibold text-[oklch(0.45_0.035_75)]">
-										学习收入打怪，游戏支出扣账户
-									</p>
-								</div>
-								<div class="adventure-badge">
-									<span>{adventureRank}</span>
-									<strong class="ink-numbers">{targetProgressPercent}%</strong>
-								</div>
-							</div>
-							<div class="mb-2 flex items-center justify-between gap-3">
-								<p class="text-sm font-semibold text-[oklch(0.33_0.09_42)]">拖延怪 HP</p>
-								<p class="ink-numbers text-sm font-semibold text-[oklch(0.42_0.1_42)]">
-									{bossHpPercent}%
-								</p>
-							</div>
-							<div
-								class="relative h-7 overflow-hidden rounded-[7px] bg-[oklch(0.88_0.035_80)] shadow-[inset_0_1px_2px_oklch(0.32_0.04_74/0.18)]"
-							>
-								<div
-									class="quest-progress-fill absolute inset-y-0 left-0 rounded-[7px]"
-									style={`width: ${targetProgressPercent}%;`}
-								></div>
-								<div
-									class="absolute inset-y-0 right-0 rounded-[7px] bg-[oklch(0.58_0.14_38/0.78)]"
-									style={`width: ${bossHpPercent}%;`}
-								></div>
-								<div class="absolute inset-y-0 left-1/2 w-px bg-[oklch(0.23_0.03_75/0.3)]"></div>
-								{#if targetProgressPercent >= 100}
-									<div class="adventure-clear-stamp">CLEAR</div>
-								{/if}
-							</div>
-							<div
-								class="mt-2 grid grid-cols-2 gap-2 text-[11px] font-semibold text-[oklch(0.45_0.035_75)]"
-							>
-								<span class="ink-numbers quest-subgoal">
-									学习 {targetProgress.studyMinutes}/{targetProgress.requirements.studyMinutes}分 · {studyProgressPercent}%
-								</span>
-								<span class="ink-numbers quest-subgoal text-right">
-									单词 {cleanedDraft.wordCount}/{targetProgress.requirements.wordCount} · {wordProgressPercent}%
-								</span>
-							</div>
-						</div>
-
-						<div class="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-							<div>
-								<div class="mb-4 flex items-center justify-between">
-									<p
-										class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.42_0.03_75)]"
-									>
-										<Gauge size={18} />
-										战斗仪表
-									</p>
-									<span
-										class="rounded-full bg-[oklch(0.94_0.04_78)] px-2.5 py-1 text-xs font-semibold text-[oklch(0.42_0.08_78)]"
-									>
-										Lv.{adventureLevel}
-									</span>
-								</div>
-
-								<div class="meter-pop relative mx-auto h-56 w-56">
-									<div
-										class="points-meter absolute inset-0 rounded-full shadow-[inset_0_0_0_1px_oklch(0.74_0.035_74/0.45),0_10px_24px_oklch(0.25_0.03_70/0.14)]"
-									></div>
-									<div
-										class="absolute inset-[18px] rounded-full bg-[oklch(0.985_0.011_92)] shadow-[inset_0_0_0_1px_oklch(0.72_0.035_72/0.35)]"
-									></div>
-									<div
-										class="absolute top-1/2 left-1/2 h-[86px] w-[3px] origin-bottom rounded-full bg-[oklch(0.23_0.03_75)] transition-transform duration-300"
-										style={`transform: translate(-50%, -100%) rotate(${meterRotation}deg);`}
-									></div>
-									<div
-										class="absolute top-1/2 left-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.23_0.03_75)]"
-									></div>
-									<div class="absolute inset-x-0 bottom-12 text-center">
-										<p class="ink-numbers text-5xl font-semibold tracking-[-0.022em]">
-											{previewScore.totalPoints}
-										</p>
-										<p
-											class="mt-1 text-xs font-semibold tracking-[0.12em] text-[oklch(0.49_0.03_75)] uppercase"
-										>
-											points
-										</p>
-									</div>
-								</div>
-								<div class="mt-3 grid grid-cols-2 gap-2 text-xs font-semibold">
-									<span class="adventure-mini-stamp">XP +{previewScore.totalPoints}</span>
-									<span class="adventure-mini-stamp adventure-mini-stamp-gold">
-										<Gamepad2 size={13} />
-										{accountMood}
-									</span>
-								</div>
-							</div>
-
-							<div class="grid grid-cols-2 content-start gap-3 sm:grid-cols-4">
-								{#each dashboardStats as stat (stat.label)}
-									{@render statCard(stat)}
-								{/each}
-							</div>
-						</div>
-
-						<div>
-							<div class="mb-4 flex items-center justify-between">
-								<p class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.42_0.03_75)]">
-									<CalendarDays size={18} />
-									{monthKey} 关卡地图
-								</p>
-								<p class="text-xs font-medium text-[oklch(0.48_0.028_75)]">
-									学习 {formatMinutes(totalStudyMinutes)} · 单词 {totalWords}
-								</p>
-							</div>
-
-							<div
-								class="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-[oklch(0.5_0.03_75)]"
-							>
-								<span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span
-									>六</span
-								><span>日</span>
-							</div>
-							<div class="mt-2 grid grid-cols-7 gap-1.5">
-								{#each calendarDays as day (day.date)}
-									<button
-										class={[
-											'calendar-stage min-h-18 rounded-[6px] p-2 text-left shadow-[inset_0_0_0_1px_oklch(0.75_0.03_74/0.32)] transition-transform duration-150 active:scale-[0.96]',
-											day.inMonth
-												? 'bg-[oklch(0.99_0.006_92/0.78)]'
-												: 'bg-[oklch(0.93_0.012_88/0.45)] text-[oklch(0.58_0.02_75)]',
-											day.hasRecord ? 'calendar-stage-cleared' : '',
-											day.netMinutes < 0 ? 'shadow-[inset_0_0_0_1px_oklch(0.58_0.12_42/0.62)]' : '',
-											day.date === cleanedDraft.date
-												? 'shadow-[inset_0_0_0_2px_oklch(0.45_0.11_145)]'
-												: '',
-											day.date === highlightedDate ? 'saved-day-pulse' : ''
-										]}
-										type="button"
-										onclick={() => selectDate(day.date)}
-									>
-										<span class="flex items-center justify-between gap-1">
-											<span class="ink-numbers text-sm font-semibold">{day.day}</span>
-											{#if day.hasRecord}
-												<span class="stage-star">★</span>
-											{/if}
-										</span>
-										{#if day.hasRecord}
-											<span class="mt-2 block h-1.5 rounded-full bg-[oklch(0.42_0.11_145)]"></span>
-											<span class="mt-1 grid gap-0.5">
-												<span
-													class="ink-numbers block text-[10px] font-semibold text-[oklch(0.38_0.07_145)]"
-												>
-													+{day.exchangeableMinutes}
-												</span>
-												{#if day.gameMinutes > 0}
-													<span class="mt-0.5 block h-1.5 rounded-full bg-[oklch(0.56_0.12_42)]"
-													></span>
-													<span
-														class="ink-numbers block text-[10px] font-semibold text-[oklch(0.43_0.1_42)]"
-													>
-														-{day.gameMinutes}
-													</span>
-												{/if}
-											</span>
-										{/if}
-									</button>
-								{/each}
-							</div>
-						</div>
-					</div>
-				</section>
-
-				<section class="paper-sheet rounded-[8px] p-5">
-					<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-						<div>
-							<p class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.42_0.03_75)]">
-								<ClipboardList size={18} />
-								周计划
-							</p>
-							<h2 class="mt-1 text-xl font-semibold tracking-[-0.012em]">本周作战纸</h2>
-						</div>
-						<p class="ink-numbers text-xs font-semibold text-[oklch(0.48_0.028_75)]">
-							{formatWeekRange(cleanedWeeklyDraft.weekStart)}
-						</p>
-					</div>
-
-					<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-						<div
-							class="rounded-[8px] bg-[oklch(0.965_0.018_92/0.76)] p-3 shadow-[inset_0_0_0_1px_oklch(0.74_0.035_74/0.34)]"
-						>
-							<div class="mb-3 flex items-center justify-between gap-3">
-								<p
-									class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.37_0.08_145)]"
-								>
-									<ListChecks size={16} />
-									计划
-								</p>
-								<span
-									class="inline-flex items-center gap-1 rounded-full bg-[oklch(0.91_0.05_146)] px-2.5 py-1 text-xs font-semibold text-[oklch(0.36_0.1_145)]"
-								>
-									<Target size={13} />
-									target
-								</span>
-							</div>
-
-							{@render weeklyNumericField({
-								field: 'recommendedDaysTarget',
-								icon: CalendarCheck,
-								label: '预计推荐量完成天数'
-							})}
-
-							<label class="mt-3 grid gap-1 text-sm font-semibold">
-								{@render iconText(ScrollText, '计划备注')}
-								<textarea class="ledger-textarea" bind:value={weeklyDraft.planNote}></textarea>
-							</label>
-						</div>
-
-						<div
-							class="rounded-[8px] bg-[oklch(0.97_0.02_88/0.72)] p-3 shadow-[inset_0_0_0_1px_oklch(0.72_0.05_74/0.34)]"
-						>
-							<div class="mb-3 flex items-center justify-between gap-3">
-								<p class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.39_0.07_75)]">
-									<ScrollText size={17} />
-									周复盘
-								</p>
-								<span
-									class="ink-numbers rounded-full bg-[oklch(0.91_0.05_146)] px-2.5 py-1 text-xs font-semibold text-[oklch(0.36_0.1_145)]"
-								>
-									{weekRecommendedDays}/7 天
-								</span>
-							</div>
-
-							<div class="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-								{#each weeklySummaryStats as stat (stat.label)}
-									{@render compactStatCard(stat)}
-								{/each}
-							</div>
-
-							<label class="mt-3 grid gap-1 text-sm font-semibold">
-								{@render iconText(History, '复盘')}
-								<textarea class="ledger-textarea" bind:value={weeklyDraft.reviewNote}></textarea>
-							</label>
-						</div>
-					</div>
-
-					<button
-						class="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[6px] bg-[oklch(0.23_0.03_75)] px-3 text-sm font-semibold text-[oklch(0.98_0.012_92)] transition-transform duration-150 active:scale-[0.96]"
-						type="button"
-						onclick={saveWeeklyRecord}
+			<section class="console-panel">
+				<div class="panel-title">
+					<p>
+						<Target size={17} />
+						拖延怪 HP
+					</p>
+					<span class="score-bubble">{adventureRank} {bossHpPercent}%</span>
+				</div>
+				<div class="boss-bar">
+					<span class="boss-fill" style={`width: ${bossHpPercent}%;`}></span>
+					<span class="clear-fill" style={`width: ${targetProgressPercent}%;`}></span>
+				</div>
+				<div class="sub-progress">
+					<span
+						>学习 {targetProgress.studyMinutes}/{targetProgress.requirements.studyMinutes} 分 · {studyProgressPercent}%</span
 					>
-						<Save size={16} />
-						保存周计划和复盘
+					<span
+						>单词 {cleanedDraft.wordCount}/{targetProgress.requirements.wordCount} · {wordProgressPercent}%</span
+					>
+				</div>
+				<div class="metric-grid">
+					{#each dashboardStats as stat (stat.label)}
+						{@render reportMetric(stat)}
+					{/each}
+				</div>
+			</section>
+
+			<section class="console-panel">
+				<div class="panel-title">
+					<p>
+						<ClipboardList size={17} />
+						本周作战
+					</p>
+					<span>{formatWeekRange(cleanedWeeklyDraft.weekStart)}</span>
+				</div>
+				<div class="week-layout">
+					<div class="week-box">
+						<p class="week-box-title">
+							<ListChecks size={16} />
+							周计划
+						</p>
+						{@render weeklyNumberField({
+							field: 'recommendedDaysTarget',
+							icon: CalendarCheck,
+							label: '预计推荐量完成天数'
+						})}
+						<label class="battle-field">
+							<span>
+								<ScrollText size={15} />
+								计划备注
+							</span>
+							<textarea class="battle-textarea" bind:value={weeklyDraft.planNote}></textarea>
+						</label>
+					</div>
+					<div class="week-box">
+						<p class="week-box-title">
+							<History size={16} />
+							周复盘
+							<span>{weekRecommendedDays}/7 天</span>
+						</p>
+						<div class="metric-grid compact">
+							{#each weeklySummaryStats as stat (stat.label)}
+								{@render reportMetric(stat)}
+							{/each}
+						</div>
+						<label class="battle-field">
+							<span>
+								<ScrollText size={15} />
+								复盘
+							</span>
+							<textarea class="battle-textarea" bind:value={weeklyDraft.reviewNote}></textarea>
+						</label>
+					</div>
+				</div>
+				<button class="primary-button full" type="button" onclick={saveWeeklyRecord}>
+					<Save size={17} />
+					保存周计划和复盘
+				</button>
+			</section>
+
+			<section class="console-panel">
+				<div class="panel-title">
+					<p>
+						<ShieldCheck size={17} />
+						冒险背包
+					</p>
+					<span>
+						{persistStatus === 'granted'
+							? '持久化'
+							: persistStatus === 'denied'
+								? '需备份'
+								: persistStatus === 'unsupported'
+									? '浏览器缓存'
+									: '检查中'}
+					</span>
+				</div>
+				<div class="export-row">
+					<button class="secondary-button" type="button" onclick={() => exportXlsx(records)}>
+						<FileSpreadsheet size={16} />
+						Excel
 					</button>
-				</section>
-
-				<aside class="paper-sheet rounded-[8px] p-5">
-					<div class="mb-4 flex items-center justify-between">
-						<p class="flex items-center gap-2 text-sm font-semibold text-[oklch(0.42_0.03_75)]">
-							<ShieldCheck size={18} />
-							冒险背包
-						</p>
-						<span
-							class="rounded-full bg-[oklch(0.93_0.035_145)] px-2.5 py-1 text-xs font-semibold text-[oklch(0.35_0.09_145)]"
-						>
-							{persistStatus === 'granted'
-								? '持久化'
-								: persistStatus === 'denied'
-									? '需备份'
-									: persistStatus === 'unsupported'
-										? '浏览器缓存'
-										: '检查中'}
-						</span>
-					</div>
-
-					<div class="grid gap-2">
-						<button
-							class="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] bg-[oklch(0.23_0.03_75)] px-3 text-sm font-semibold text-[oklch(0.98_0.012_92)] transition-transform duration-150 active:scale-[0.96]"
-							type="button"
-							onclick={() => exportXlsx(records)}
-						>
-							<FileSpreadsheet size={16} />
-							导出 Excel
-						</button>
-						<button
-							class="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] bg-[oklch(0.96_0.026_78)] px-3 text-sm font-semibold text-[oklch(0.31_0.04_78)] shadow-[inset_0_0_0_1px_oklch(0.72_0.04_78/0.46)] transition-transform duration-150 active:scale-[0.96]"
-							type="button"
-							onclick={() => exportJson(records, weeklyRecords)}
-						>
-							<Download size={16} />
-							导出备份
-						</button>
-						<button
-							class="inline-flex h-10 items-center justify-center gap-2 rounded-[6px] bg-[oklch(0.96_0.026_78)] px-3 text-sm font-semibold text-[oklch(0.31_0.04_78)] shadow-[inset_0_0_0_1px_oklch(0.72_0.04_78/0.46)] transition-transform duration-150 active:scale-[0.96]"
-							type="button"
-							onclick={() => fileInput?.click()}
-						>
-							<FileUp size={16} />
-							导入备份
-						</button>
-						<input
-							class="hidden"
-							type="file"
-							accept="application/json,.json"
-							bind:this={fileInput}
-							onchange={importBackup}
-						/>
-					</div>
-
-					<div class="mt-5 space-y-3 text-sm">
-						{#each inventoryRows as row (row.label)}
-							{@const Icon = row.icon}
-							<div class="flex justify-between gap-3">
-								<span class="flex items-center gap-1.5 text-[oklch(0.48_0.028_75)]">
-									<Icon size={14} />
-									{row.label}
-								</span>
-								<span class="ink-numbers font-semibold">{row.value}</span>
-							</div>
-						{/each}
-					</div>
-				</aside>
-			</div>
-		</section>
-
-		<section class="paper-sheet mt-5 rounded-[8px] p-5">
-			<div class="mb-4 flex items-center justify-between">
-				<h2 class="flex items-center gap-2 text-xl font-semibold tracking-[-0.012em]">
-					<History size={20} />
-					战斗日志
-				</h2>
-				<p class="flex items-center gap-1.5 text-sm text-[oklch(0.48_0.028_75)]">
-					<ListChecks size={15} />
-					最近 8 条
-				</p>
-			</div>
-
-			<div class="grid gap-3 md:hidden">
-				{#each recentRows as record (record.date)}
-					{@const row = ledger.find((item) => item.record.date === record.date)}
 					<button
-						class="adventure-log-card rounded-[6px] p-3 text-left transition-transform duration-150 active:scale-[0.96]"
+						class="secondary-button"
 						type="button"
-						onclick={() => selectDate(record.date)}
+						onclick={() => exportJson(records, weeklyRecords)}
 					>
-						<div class="flex items-start justify-between gap-3">
-							<p class="ink-numbers flex items-center gap-1.5 font-semibold">
-								<CalendarCheck size={14} />
-								{record.date}
-							</p>
-							<p class="ink-numbers text-lg font-semibold text-[oklch(0.36_0.1_145)]">
-								+{row?.score.exchangeableMinutes ?? 0}
-							</p>
-						</div>
-						<div class="mt-2 grid grid-cols-3 gap-2 text-xs text-[oklch(0.46_0.028_75)]">
-							<span class="flex items-center gap-1">
+						<Download size={16} />
+						备份
+					</button>
+					<button class="secondary-button" type="button" onclick={() => fileInput?.click()}>
+						<FileUp size={16} />
+						导入
+					</button>
+					<input
+						class="hidden"
+						type="file"
+						accept="application/json,.json"
+						bind:this={fileInput}
+						onchange={importBackup}
+					/>
+				</div>
+				<div class="inventory-grid">
+					{#each inventoryRows as row (row.label)}
+						{@render reportMetric(row)}
+					{/each}
+				</div>
+			</section>
+
+			<section class="console-panel">
+				<div class="panel-title">
+					<p>
+						<History size={17} />
+						历史流水
+					</p>
+					<span>最近 8 条</span>
+				</div>
+				<div class="log-list">
+					{#each recentRows as record (record.date)}
+						{@const row = ledger.find((item) => item.record.date === record.date)}
+						<button class="log-row" type="button" onclick={() => selectDate(record.date)}>
+							<span class="ink-numbers log-date">{record.date}</span>
+							<span>
 								<BookOpen size={13} />
-								学习 {record.calculusMinutes + record.courseMinutes}
+								{record.calculusMinutes + record.courseMinutes}
 							</span>
-							<span class="flex items-center gap-1 text-[oklch(0.43_0.1_42)]">
-								<Gamepad2 size={13} />
-								游戏 -{record.gameMinutes}
+							<span>
+								<Brain size={13} />
+								{record.wordCount}
 							</span>
-							<span class="flex items-center gap-1">
-								<Archive size={13} />
-								结转 {row?.balanceAfter ?? 0}
-							</span>
-						</div>
-						<p class="ink-numbers mt-1 text-xs font-semibold text-[oklch(0.36_0.1_145)]">
-							净变化 {(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes >= 0 ? '+' : ''}
-							{(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes}分
-						</p>
-						{#if record.note}
-							<p class="mt-2 line-clamp-2 text-sm text-[oklch(0.38_0.028_75)]">{record.note}</p>
-						{/if}
-					</button>
-				{/each}
-				{#if recentRows.length === 0}
-					<p class="py-8 text-center text-[oklch(0.48_0.028_75)]">还没有记录</p>
-				{/if}
-			</div>
-
-			<div class="hidden overflow-x-auto md:block">
-				<table class="w-full min-w-[820px] table-fixed border-collapse text-sm">
-					<colgroup>
-						<col class="w-[7.25rem]" />
-						<col class="w-[4.75rem]" />
-						<col class="w-[4.75rem]" />
-						<col class="w-[5.25rem]" />
-						<col class="w-[5.75rem]" />
-						<col class="w-[5.25rem]" />
-						<col class="w-[4.5rem]" />
-						<col />
-					</colgroup>
-					<thead>
-						<tr
-							class="border-b border-[oklch(0.74_0.035_74/0.5)] text-left text-xs font-semibold tracking-[0.08em] text-[oklch(0.48_0.028_75)] uppercase"
-						>
-							<th class="py-2 pr-3">
-								{@render tableHeading(CalendarCheck, '日期')}
-							</th>
-							<th class="py-2 pr-3 text-right">
-								{@render tableHeading(BookOpen, '学习', 'right')}
-							</th>
-							<th class="py-2 pr-3 text-right">
-								{@render tableHeading(Brain, '单词', 'right')}
-							</th>
-							<th class="py-2 pr-3 text-right">
-								{@render tableHeading(Coins, '可兑换', 'right')}
-							</th>
-							<th class="py-2 pr-3 text-right">
-								{@render tableHeading(Gamepad2, '实际游戏', 'right')}
-							</th>
-							<th class="py-2 pr-3 text-right">
-								{@render tableHeading(Sparkles, '净变化', 'right')}
-							</th>
-							<th class="py-2 pr-3 text-right">
-								{@render tableHeading(Archive, '结转', 'right')}
-							</th>
-							<th class="py-2">
-								{@render tableHeading(ScrollText, '备注')}
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each recentRows as record (record.date)}
-							{@const row = ledger.find((item) => item.record.date === record.date)}
-							<tr class="border-b border-[oklch(0.8_0.025_74/0.36)]">
-								<td class="ink-numbers py-3 pr-3 font-semibold whitespace-nowrap">{record.date}</td>
-								<td class="ink-numbers py-3 pr-3 text-right">
-									{record.calculusMinutes + record.courseMinutes}
-								</td>
-								<td class="ink-numbers py-3 pr-3 text-right">{record.wordCount}</td>
-								<td class="ink-numbers py-3 pr-3 text-right font-semibold">
-									+{row?.score.exchangeableMinutes ?? 0}
-								</td>
-								<td class="ink-numbers py-3 pr-3 text-right text-[oklch(0.43_0.1_42)]">
-									-{record.gameMinutes}
-								</td>
-								<td
-									class={[
-										'ink-numbers py-3 pr-3 text-right font-semibold',
-										(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes < 0
-											? 'text-[oklch(0.43_0.1_42)]'
-											: 'text-[oklch(0.36_0.1_145)]'
-									]}
-								>
-									{(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes >= 0 ? '+' : ''}
-									{(row?.score.exchangeableMinutes ?? 0) - record.gameMinutes}
-								</td>
-								<td class="ink-numbers py-3 pr-3 text-right">{row?.balanceAfter ?? 0}</td>
-								<td class="min-w-[220px] truncate py-3 text-[oklch(0.42_0.028_75)]">
-									{record.note}
-								</td>
-							</tr>
-						{/each}
-						{#if recentRows.length === 0}
-							<tr>
-								<td class="py-8 text-center text-[oklch(0.48_0.028_75)]" colspan="8">还没有记录</td>
-							</tr>
-						{/if}
-					</tbody>
-				</table>
-			</div>
+							<strong class="ink-numbers">+{row?.score.exchangeableMinutes ?? 0}</strong>
+							<em class="ink-numbers">-{record.gameMinutes}</em>
+							<p>{record.note || '无备注'}</p>
+						</button>
+					{/each}
+					{#if recentRows.length === 0}
+						<p class="empty-state">还没有记录</p>
+					{/if}
+				</div>
+			</section>
 		</section>
 	</div>
 </main>
